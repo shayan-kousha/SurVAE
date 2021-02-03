@@ -1,4 +1,8 @@
 numpy==1.19.5
 matplotlib
+jax
+jaxlib
+tensorflow
+pillow
 flax==0.3.0
 ipdb
