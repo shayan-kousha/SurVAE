@@ -2,14 +2,17 @@ from flax import linen as nn
 
 class Distribution:
 
-    def log_prob(self, x):
+    @classmethod
+    def log_prob(cls, x, params):
         raise NotImplementedError()
 
-    def sample(self, rng):
+    @classmethod
+    def sample(cls, rng, num_samples, params):
         raise NotImplementedError()
 
-    def sample_with_log_prob(self, rng):
-        samples = self.sample(rng)
-        log_prob = self.log_prob(samples)
+    @classmethod
+    def sample_with_log_prob(cls, rng, num_samples, params):
+        samples = cls.sample(rng, num_samples, params)
+        log_prob = cls.log_prob(samples, params)
         return samples, log_prob
 
