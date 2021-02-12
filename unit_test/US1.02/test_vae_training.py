@@ -138,12 +138,12 @@ def main(argv):
     log_prob, comparison, sample = eval(optimizer.target, test_ds, z, eval_rng)
     
     try:
-      os.mkdir('results')
+      os.mkdir('unit_test/US1.02/results')
     except:
       pass
     utils.save_image(
-        comparison, f'results/reconstruction_{epoch}.png', nrow=8)
-    utils.save_image(sample, f'results/sample_{epoch}.png', nrow=8)
+        comparison, f'unit_test/US1.02/results/reconstruction_{epoch}.png', nrow=8)
+    utils.save_image(sample, f'unit_test/US1.02/results/sample_{epoch}.png', nrow=8)
 
     print('eval epoch: {}, loss: {:.4f}'.format(
         epoch + 1, log_prob
