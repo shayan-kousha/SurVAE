@@ -7,3 +7,6 @@ python3 </br>
 ### JAX
 `pip install jax==0.2.8` </br>
 `pip install jaxlib==0.1.56+cuda100 -f https://storage.googleapis.com/jax-releases/jax_releases.html`
+
+### Running Unit Test
+`python unit_test/US1.02/test_vae_training.py `
