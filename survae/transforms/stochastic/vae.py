@@ -2,6 +2,7 @@ from flax import linen as nn
 from functools import partial
 from survae.transforms.stochastic import StochasticTransform
 from survae.distributions import *
+import jax.numpy as jnp
 
 
 class VAE(nn.Module,StochasticTransform):
@@ -26,14 +27,15 @@ class VAE(nn.Module,StochasticTransform):
         return self.forward(rng, x)
 
     def forward(self, rng, x):
-        enc_params_0, enc_params_1 = jnp.split(self._encoder(x), 2, axis=-1)
-        z, log_qz = self.q.sample_with_log_prob(rng, num_samples=None, 
-                        params=(enc_params_0,enc_params_1))
+        params = self._encoder(x)
+        z, log_qz = self.q.sample_with_log_prob(rng, num_samples=x.shape[0], 
+                        params=params)
         log_px = self.p.log_prob(x, params=self._decoder(z))
         return z, log_px - log_qz
 
-    def inverse(self, z):
-        return self._decoder(z)
+    def inverse(self, rng, z):
+        params = self._decoder(z)
+        return self.p.sample(rng, z.shape[0],params)
     
 
     
