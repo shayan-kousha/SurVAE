@@ -6,7 +6,6 @@ import jax.numpy as jnp
 import jax
 from jax import random
 from jax.config import config
-config.enable_omnistaging()
 config.update("jax_debug_nans", True)
 from flax import linen as nn
 from flax import optim
@@ -39,8 +38,8 @@ flags.DEFINE_integer(
     help=('Number of training epochs.')
 )
 
-flags.DEFINE_integer(
-    'latents', default=50,
+flags.DEFINE_list(
+    'latents', default=[50,20],
     help=('Number of latent variables.')
 )
 
@@ -56,12 +55,17 @@ flags.DEFINE_integer(
 
 
 def model():
-    encoder = MLP._setup(784, 2*FLAGS.latents,(200,),nn.relu)
-    decoder = MLP._setup(FLAGS.latents,784,(200,),nn.relu)
-    vae = VAE._setup(encoder=encoder, decoder=decoder, q=Normal, p=Bernoulli)
+    encoder1 = MLP._setup(784, 2*FLAGS.latents[0],(100,),nn.relu)
+    decoder1 = MLP._setup(FLAGS.latents[0],784,(100,),nn.relu)
+    vae1 = VAE._setup(encoder=encoder1, decoder=decoder1, q=Normal, p=Bernoulli)
+
+    encoder2 = MLP._setup(FLAGS.latents[0], 2*FLAGS.latents[1],(50,),nn.relu)
+    decoder2 = MLP._setup(FLAGS.latents[1], FLAGS.latents[0],(50,),nn.relu)
+    vae2 = VAE._setup(encoder=encoder2, decoder=decoder2, q=Normal, p=MeanNormal)
+    
     base_dist = StandardNormal
-    flow = StochasticFlow(base_dist,[vae],FLAGS.latents)
-    return flow
+    flow = StochasticFlow._setup(base_dist,[vae1,vae2],FLAGS.latents[1])
+    return flow()
 
 @jax.jit
 def train_step(optimizer, batch, z_rng):
@@ -84,7 +88,6 @@ def eval(params, images, z, z_rng):
 
   generate_images = model().apply({'params': params}, z_rng, 64, method=model().sample)
   generate_images = generate_images.reshape(-1, 28, 28, 1)
-  
 
   return log_prob, comparison, generate_images, mse
 
@@ -126,7 +129,7 @@ def main(argv):
   optimizer = jax.device_put(optimizer)
 
   rng, z_key, eval_rng = random.split(rng, 3)
-  z = random.normal(z_key, (64, FLAGS.latents))
+  z = random.normal(z_key, (64, FLAGS.latents[1]))
 
   steps_per_epoch = 50000 // FLAGS.batch_size
 
@@ -140,14 +143,15 @@ def main(argv):
     log_prob, comparison, sample, mse = eval(optimizer.target, test_ds, z, eval_rng)
     
     try:
-      os.mkdir('unit_test/US1.02/results_vae')
+      os.mkdir('unit_test/US1.02/results_hvae')
     except:
       pass
     if epoch % 10 == 0:
       utils.save_image(
-          comparison, f'unit_test/US1.02/results_vae/reconstruction_{epoch}.png', nrow=8)
-      utils.save_image(sample, f'unit_test/US1.02/results_vae/sample_{epoch}.png', nrow=8)
+          comparison, f'unit_test/US1.02/results_hvae/reconstruction_{epoch}.png', nrow=8)
+      utils.save_image(sample, f'unit_test/US1.02/results_hvae/sample_{epoch}.png', nrow=8)
 
+    assert (jnp.isfinite(log_prob)).all() == True
     print('eval epoch: {}, loss: {:.4f}, recon_loss: {:.4f}'.format(
         epoch + 1, -log_prob.mean(), mse
     ))
