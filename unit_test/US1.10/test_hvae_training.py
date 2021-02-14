@@ -79,11 +79,11 @@ def model():
     decoder3 = MLP._setup(FLAGS.latents[1], FLAGS.latents[0]//2,(20,),nn.relu)
     vae3 = VAE._setup(encoder=encoder3, decoder=decoder3, q=Normal, p=MeanNormal)
     
-    # cond = MLP._setup(FLAGS.latents[0]//2, FLAGS.latents[0],(10,),nn.relu)
-    cond = None
+    cond = MLP._setup(FLAGS.latents[0]//2, FLAGS.latents[0],(10,),nn.relu)
+    # cond = None
 
     base_dist = StandardNormal
-    flow = StochasticFlow._setup(StandardNormal,[vae2],FLAGS.latents[1])
+    flow = StochasticFlow._setup(Normal,[vae2],FLAGS.latents[1])
     slice = Slice._setup(flow, cond, FLAGS.latents[0]//2, dim=1)
 
     mainflow = MultiScaleStochasticFlow(base_dist,[vae1,slice,vae3],FLAGS.latents[1])

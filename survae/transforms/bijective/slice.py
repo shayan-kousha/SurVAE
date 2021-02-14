@@ -31,12 +31,11 @@ class Slice(nn.Module, Bijective):
         params = None
         log_prob = jnp.zeros(z[1].shape[0])
         if self.decoder != None:
-            print("+_++++++==============z0",z[0].shape)
             params = self._decoder(z[0])
         for transform in self._flow._transforms:
             z[1], ldj = transform(rng, z[1])
             log_prob += ldj
-        log_prob += self._flow.base_dist.log_prob(x, params=params)
+        log_prob += self._flow.base_dist.log_prob(z[1], params=params)
         return z[:-1], log_prob
 
     def inverse(self, rng, z1, z2=None):
