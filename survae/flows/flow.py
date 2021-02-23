@@ -92,9 +92,7 @@ class PoolFlow(Flow):
     def log_prob(self, x):
         log_det_J, z =  jnp.zeros(x.shape[0]), x
         for layer in self._transforms:
-            import ipdb;ipdb.set_trace()
             z, log_det_J_layer = layer(z)
-            import ipdb;ipdb.set_trace()
             
             log_det_J += log_det_J_layer
 
@@ -104,7 +102,6 @@ class PoolFlow(Flow):
         x = self.base_dist.sample(rng, num_samples, params=jnp.zeros(self.latent_size))
         for layer in reversed(self._transforms):
             x = layer.inverse(x)
-        # TODO add log_det_J_layer
 
         return x
 

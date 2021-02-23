@@ -45,9 +45,7 @@ class SimpleMaxPoolSurjection2d(nn.Module, Surjective):
         return mask
 
     def _deconstruct_x(self, x):
-        # import ipdb;ipdb.set_trace()
         xs = self._squeeze(x)
-        # import ipdb;ipdb.set_trace()
         z, k = xs.max(-1)
         mask = self._k_mask(k)
         xr = xs[~mask].view(k.shape+(3,))
