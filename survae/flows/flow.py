@@ -100,8 +100,9 @@ class PoolFlow(Flow):
         
     def sample(self, rng, num_samples): 
         x = self.base_dist.sample(rng, num_samples, params=jnp.zeros(self.latent_size))
+        x = x.reshape(num_samples, 3, 2, 2) # TODO shouldn't be hard coded
         for layer in reversed(self._transforms):
-            x = layer.inverse(x)
+            x = layer.inverse(x, rng)
 
         return x
 
