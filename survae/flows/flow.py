@@ -25,6 +25,7 @@ class Flow(nn.Module, Distribution):
         else:
             self._transforms = []
 
+    # TODO we dont need rng for bijections
     def __call__(self, rng, x, params=None):
         return self.log_prob(rng, x, params=None)
 
@@ -37,6 +38,8 @@ class Flow(nn.Module, Distribution):
         return log_prob
 
     def sample(self, rng, num_samples, params=None):
+
+        # TODO instead of params we can pass latent size
         if params == None:
             params=jnp.zeros(self.latent_size)
         z = self.base_dist.sample(rng, num_samples, params=params)
@@ -44,6 +47,34 @@ class Flow(nn.Module, Distribution):
             z = transform.inverse(rng, z)
         return z
 
+class SimpleRealNVP(Flow):
+    base_dist: Distribution = None
+    transforms: Union[List[Transform],None] = None
+    latent_size: Union[Tuple[int],None] = None
+
+    # TODO delete this once __call__ of flow is fixed
+    def __call__(self, x):
+        return self.log_prob(x)
+
+    @staticmethod
+    def _setup(base_dist, transforms, latent_size):
+        return partial(SimpleRealNVP, base_dist, transforms, latent_size)
+
+    def log_prob(self, x):
+        log_det_J, z =  jnp.zeros(x.shape[0]), x
+        for layer in self._transforms:
+            z, log_det_J_layer = layer(z)
+            log_det_J += log_det_J_layer
+
+        return self.base_dist.log_prob(z, params=None) + log_det_J
+
+    def sample(self, rng, num_samples):
+        x = self.base_dist.sample(rng, num_samples, params=jnp.zeros(self.latent_size))
+        for layer in reversed(self._transforms):
+            x = layer.inverse(x)
+        # TODO add log_det_J_layer
+
+        return x
 
 
 

@@ -4,3 +4,4 @@ from .nn import *
 from .optim import *
 from .transforms import *
 from .utils import *
+from .data import *
