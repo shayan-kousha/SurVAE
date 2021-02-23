@@ -76,6 +76,35 @@ class SimpleRealNVP(Flow):
 
         return x
 
+class PoolFlow(Flow):
+    base_dist: Distribution = None
+    transforms: Union[List[Transform],None] = None
+    latent_size: Union[Tuple[int],None] = None
+
+    # TODO delete this once __call__ of flow is fixed
+    def __call__(self, x):
+        return self.log_prob(x)
+
+    @staticmethod
+    def _setup(base_dist, transforms, latent_size):
+        return partial(PoolFlow, base_dist, transforms, latent_size)
+
+    def log_prob(self, x):
+        log_det_J, z =  jnp.zeros(x.shape[0]), x
+        for layer in self._transforms:
+            z, log_det_J_layer = layer(z)
+            
+            log_det_J += log_det_J_layer
+
+        return self.base_dist.log_prob(z, params=None) + log_det_J
+        
+    def sample(self, rng, num_samples): 
+        x = self.base_dist.sample(rng, num_samples, params=jnp.zeros(self.latent_size))
+        x = x.reshape(num_samples, 3, 2, 2) # TODO shouldn't be hard coded
+        for layer in reversed(self._transforms):
+            x = layer.inverse(x, rng)
+
+        return x
 
 
 class MultiScaleFlow(Flow):
