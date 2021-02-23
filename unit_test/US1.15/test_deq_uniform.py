@@ -12,7 +12,7 @@ rng, key = random.split(rng)
 x = jnp.array([[2,3,1],[25,254,124],[14,15,16]])
 
 
-deq = survae.UniformDequantization()
+deq = survae.UniformDequantization(num_bits=10)
 print("==================")
 
 print(deq)

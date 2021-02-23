@@ -8,15 +8,16 @@ from jax import random
 
 class UniformDequantization(nn.Module,Surjective):
     num_bits: int = 8
-    quantization_bins: int = 2**num_bits
-    ldj_per_dim = -jnp.log(2**num_bits)
     _dtype: Any = None
     stochastic_forward: bool = True
 
 
     @staticmethod
     def _setup(num_bits=8):
-        return partial(UniformDequantization, num_bits)        
+        return partial(UniformDequantization, num_bits)       
+
+    def setup(self):
+        return
         
     
     @nn.compact
@@ -27,19 +28,19 @@ class UniformDequantization(nn.Module,Surjective):
         if self._dtype == None:
             self._dtype = x.dtype
         u = random.uniform(rng,x.shape)
-        z = (x.astype(u.dtype) + u) / self.quantization_bins
+        z = (x.astype(u.dtype) + u) / (2**num_bits)
         ldj = self._ldj(z.shape)
         return z, ldj
     
     def _ldj(self, shape):
         batch_size = shape[0]
         num_dims = jnp.array(shape[1:]).prod()
-        ldj = self.ldj_per_dim * num_dims
+        ldj = -jnp.log(2**num_bits)  * num_dims
         return ldj.repeat(batch_size)
 
     def inverse(self, rng, z):
-        z = self.quantization_bins * z
-        return jnp.clip(jnp.floor(z),a_min=0.,a_max=self.quantization_bins-1).astype(self._dtype)
+        z = 2**num_bits * z
+        return jnp.clip(jnp.floor(z),a_min=0.,a_max=2**num_bits-1).astype(self._dtype)
     
 
     
