@@ -6,3 +6,4 @@ tensorflow
 pillow
 flax==0.3.0
 ipdb
+tensorflow-datasets
