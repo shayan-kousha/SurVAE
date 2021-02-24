@@ -16,7 +16,7 @@ deq = survae.VariationalDequantization(encoder=encoder,base_dist=survae.Normal)
 params = deq.init(key, rng, x)['params']
 print(params)
 print("==================")
-
+print("========== rng =========\n",rng,"\n================")
 print(deq)
 print("++++++++++++++++++++++++++++++")
 
