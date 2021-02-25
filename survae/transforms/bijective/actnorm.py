@@ -4,10 +4,8 @@ from flax.core.frozen_dict import FrozenDict
 from survae.transforms.bijective import Bijective
 from survae.distributions import *
 from jax import numpy as jnp, random
-from survae.utils.initializer import rvs
 import jax
-from functools import reduce
-from operator import mul
+
 
 class ActNorm(nn.Module, Bijective):
     num_features: int
