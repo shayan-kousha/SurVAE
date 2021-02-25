@@ -16,8 +16,8 @@ class VAE(nn.Module,StochasticTransform):
         return partial(VAE, encoder, decoder, q, p)        
 
     def setup(self):
-        if self.encoder == None and self.decoder == None \
-            and self.q == None and self.p == None:
+        if self.encoder == None or self.decoder == None \
+            or self.q == None or self.p == None:
             raise TypeError()
         self._encoder = self.encoder()
         self._decoder = self.decoder()

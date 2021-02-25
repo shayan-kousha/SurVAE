@@ -5,7 +5,7 @@ from survae.distributions import *
 from jax import numpy as jnp, random
 
 
-class Slice(nn.Module, Bijective):
+class Split(nn.Module, Bijective):
     flow: nn.Module = None
     decoder: nn.Module = None
     num_keep: int = None
@@ -13,10 +13,10 @@ class Slice(nn.Module, Bijective):
 
     @staticmethod
     def _setup(flow, decoder, num_keep, dim):
-        return partial(Slice, flow, decoder, num_keep, dim)        
+        return partial(Split, flow, decoder, num_keep, dim)        
 
     def setup(self):
-        if self.flow == None and self.num_keep == None:
+        if self.flow == None or self.num_keep == None:
             raise TypeError()
         self._flow = self.flow()
         if self.decoder != None:

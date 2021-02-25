@@ -84,9 +84,9 @@ def model():
 
     base_dist = StandardNormal
     flow = StochasticFlow._setup(Normal,[vae2],FLAGS.latents[1])
-    slice = Slice._setup(flow, cond, FLAGS.latents[0]//2, dim=1)
+    split = Split._setup(flow, cond, FLAGS.latents[0]//2, dim=1)
 
-    mainflow = MultiScaleStochasticFlow(base_dist,[vae1,slice,vae3],FLAGS.latents[1])
+    mainflow = MultiScaleStochasticFlow(base_dist,[vae1,split,vae3],FLAGS.latents[1])
     return mainflow
 
 @jax.jit
