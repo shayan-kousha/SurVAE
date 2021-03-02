@@ -43,6 +43,7 @@ class Corners:
 
 
 		data = np.stack([np.concatenate((x1_1, x1_2, x1_3, x1_4, x1_5, x1_6, x1_7, x1_8)), np.concatenate((x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7, x2_8))]).T
+		return data
 
 class FourCirclesDataset:
 	def __init__(self, num_points):
