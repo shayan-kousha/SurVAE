@@ -7,8 +7,7 @@ from typing import Union, Tuple
 
 
 class Abs(nn.Module, Surjective):
-	def __init__(self):
-		self.base_dist = Bernoulli() 
+	base_dist: Bernoulli = Bernoulli()
 
 	def forward(self, x):
 		z = jnp.abs(x)
