@@ -7,21 +7,22 @@ from functools import partial
 from survae.data.loaders import MNIST, CIFAR10, disp_imdata, logistic
 import torch
 import numpy as np
+from typing import Union, Tuple
 
 class SimpleMaxPoolSurjection2d(nn.Module, Surjective):
     decoder: Distribution
-
+    latent_shape: Union[Tuple[int], None] = None
     stochastic_forward = False
 
     @staticmethod
-    def _setup(decoder):
-        return partial(SimpleMaxPoolSurjection2d, decoder)        
+    def _setup(decoder, latent_shape=None):
+        return partial(SimpleMaxPoolSurjection2d, decoder=decoder, latent_shape=latent_shape)        
 
     # def setup(self):
     #     assert isinstance(self.decoder, Distribution)
 
     @nn.compact
-    def __call__(self, x):
+    def __call__(self, rng, x):
         return self.forward(x)
 
     def _squeeze(self, x):
@@ -64,6 +65,7 @@ class SimpleMaxPoolSurjection2d(nn.Module, Surjective):
         xs.masked_scatter_(mask, z)
         xs.masked_scatter_(~mask, xr)
         x = self._unsqueeze(xs)
+
         return x
 
     def forward(self, x):
@@ -75,7 +77,6 @@ class SimpleMaxPoolSurjection2d(nn.Module, Surjective):
     def inverse(self, z, rng=None):
         z = torch.tensor(np.array(z))
         k = torch.randint(0, 4, z.shape, device=z.device)
-        xd = self.decoder.sample(rng, z.shape[0], params=jnp.zeros(z.shape[1]*3*z.shape[2]*z.shape[3]))
-        xd = xd.reshape((z.shape[0], z.shape[1]*3, z.shape[2], z.shape[3]))
+        xd = self.decoder.sample(rng, z.shape[0], params=jnp.zeros(self.latent_shape))
         x = self._construct_x(z, xd, k)
         return jnp.array(x)

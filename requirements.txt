@@ -2,8 +2,9 @@ numpy==1.19.5
 matplotlib
 jax
 jaxlib
-tensorflow
+tensorflow==2.4.1
 pillow
 flax==0.3.0
 ipdb
-tensorflow-datasets
+tensorflow-datasets==4.2.0
+torchvision==0.8.2

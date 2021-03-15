@@ -1,5 +1,3 @@
-from flax import linen as nn
-
 class Distribution:
 
     @classmethod
