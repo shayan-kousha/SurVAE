@@ -7,10 +7,22 @@ from typing import Union, Tuple
 
 
 class Abs(nn.Module, Surjective):
-	base_dist: Bernoulli = Bernoulli()
+	base_dist: Bernoulli = None
+
+	# @staticmethod
+    # def _setup(decoder, base_dist, num_keep, dim):
+    #     return partial(Abs, flow, base_dist)
+
+	# @staticmethod
+ #    def _setup(base_dist):
+ #        return partial(Abs, base_dist)
+	@staticmethod
+	def _setup(base_dist):
+		return partial(Abs, base_dist)
 
 	def forward(self, x):
 		z = jnp.abs(x)
+		print("forward")
 		numel = 1
 		for nml in x.shape[1:]:
 			numel *= nml
@@ -20,6 +32,7 @@ class Abs(nn.Module, Surjective):
 
 	def inverse(self, rng, z):
 		ber = 2 * self.base_dist.sample(rng, z.shape[0]) - 1
+		print("inverse")
 		ber = ber[:, 0]
 		x = ber * z
 		return x    
