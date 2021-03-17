@@ -111,17 +111,19 @@ for layer in range(args.num_flows):
 # Construct Flow
 absflow = AbsFlow(base_dist=StandardNormal, transforms=transforms, latent_size=2)
 params = absflow.init(key, train_data[:2])
-
+print(params)
 # Define Optimizer
 optimizer_def = optim.Adam(learning_rate=args.lr)
 optimizer = optimizer_def.create(params)
 
 
-print(absflow.apply(params, train_data, method=absflow.log_prob).shape)
+# print(absflow.apply(params, train_data, method=absflow.log_prob).shape)
+# print(-jnp.mean(absflow.apply(params, train_data, method=absflow.log_prob)))
+# exit(0)
 
 @jax.jit
 def loss_fn(params, batch):
-    return -np.mean(absflow.apply(params, batch, method=absflow.log_prob))
+    return -jnp.mean(absflow.apply(params, batch, method=absflow.log_prob))
 
 @jax.jit
 def train_step(optimizer, batch):
@@ -133,15 +135,15 @@ def train_step(optimizer, batch):
 
 for e in range(args.epochs):
     for batch in range(int(args.train_samples/args.batch_size)):
-        train_data = train_data[batch*args.batch_size:(batch+1)*args.batch_size]
-        optimizer, loss_val = train_step(optimizer, np.round(train_data, 4))
-    
+        train_batch = train_data[batch*args.batch_size:(batch+1)*args.batch_size]
+        optimizer, loss_val = train_step(optimizer, np.round(train_batch, 4))
+    print([i for i in params.keys()])
     if e % 5 == 0:
-        validation_loss = loss_fn(optimizer.target, test_samples)
+        validation_loss = loss_fn(optimizer.target, test_data)
         
-        x = absflow.apply(optimizer.target, rng, 25, method=absflow.sample)
-        x = (logistic(x) - dataset.alpha) / (1 - 2*dataset.alpha)
+        # x = absflow.apply(optimizer.target, rng, 25, method=absflow.sample)
+        # x = (logistic(x) - 0) / (1 - 2*0)
         # disp_imdata(x, data.image_size, [5, 5])
         # plt.savefig('./unit_test/US1.03/samples/{}/epoch-{}.png'.format(dataset.name, e))
 
-        print('epoch %s/%s batch %s/%s:' % (e+1, epoch, batch, int(num_training_data/batch_size)), 'loss = %.3f' % loss_val, 'val_loss = %0.3f' % validation_loss)
+        print('epoch %s/%s batch %s/%s:' % (e+1, args.epochs, batch, int(args.train_samples/args.batch_size)), 'loss = %.3f' % loss_val, 'val_loss = %0.3f' % validation_loss)
