@@ -26,13 +26,13 @@ class Flow(nn.Module, Distribution):
             self._transforms = []
 
     # TODO we dont need rng for bijections
-    def __call__(self, rng, x, params=None):
-        return self.log_prob(rng, x, params=None)
+    def __call__(self, x, params=None):
+        return self.log_prob(x, params=None)
 
-    def log_prob(self, rng, x, params=None):
+    def log_prob(self, x, params=None):
         log_prob = jnp.zeros(x.shape[0])
         for transform in self._transforms:
-            x, ldj = transform(rng, x)
+            x, ldj = transform(x)
             log_prob += ldj
         log_prob += self.base_dist.log_prob(x, params=params)
         return log_prob
@@ -43,8 +43,9 @@ class Flow(nn.Module, Distribution):
         if params == None:
             params=jnp.zeros(self.latent_size)
         z = self.base_dist.sample(rng, num_samples, params=params)
+        print("======== z =====",z.shape)
         for transform in reversed(self._transforms):
-            z = transform.inverse(rng, z)
+            z = transform.inverse(z)
         return z
 
 class SimpleRealNVP(Flow):

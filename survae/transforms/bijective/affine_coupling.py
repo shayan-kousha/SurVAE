@@ -1,7 +1,7 @@
 from functools import partial
 from survae.transforms.bijective import Bijective
 # from survae.distributions import *
-
+from survae.utils import *
 from flax import linen as nn
 import jax.numpy as jnp
 from typing import Callable
@@ -22,9 +22,9 @@ class AffineCoupling(nn.Module, Bijective):
         return self.forward(x)
 
     def forward(self, x):
-        mask_size = x.shape[-1] // 2
-        x0 = x[..., :mask_size]
-        x1 = x[..., mask_size:]
+        mask_size = x.shape[1] // 2
+        x0 = x[:, :mask_size]
+        x1 = x[:, mask_size:]
 
         if self._reverse_mask:
           x0, x1 = x1, x0
@@ -36,16 +36,15 @@ class AffineCoupling(nn.Module, Bijective):
         if self._reverse_mask:
           x1, x0 = x0, x1
 
-        z = jnp.concatenate([x0, x1], axis=-1)
-
-        return z, jnp.sum(log_scale, axis=1)
+        z = jnp.concatenate([x0, x1], axis=1)
+        return z, sum_except_batch(log_scale)
 
 
     def inverse(self, z):
-        mask_size = z.shape[-1] // 2
+        mask_size = z.shape[1] // 2
 
-        z0 = z[..., :mask_size]
-        z1 = z[..., mask_size:]
+        z0 = z[:, :mask_size]
+        z1 = z[:, mask_size:]
         
         if self._reverse_mask:
             z0, z1 = z1, z0
@@ -57,7 +56,7 @@ class AffineCoupling(nn.Module, Bijective):
         if self._reverse_mask:
             z1, z0 = z0, z1
 
-        x = jnp.concatenate([z0, z1], axis=-1)
+        x = jnp.concatenate([z0, z1], axis=1)
 
         return x
 

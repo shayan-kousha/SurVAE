@@ -36,11 +36,11 @@ class ActNorm(nn.Module, Bijective):
         return mean, log_std
 
     @nn.compact
-    def __call__(self, rng, x):
-        return self.forward(rng, x)
+    def __call__(self, x):
+        return self.forward( x)
 
 
-    def forward(self, rng, x):
+    def forward(self,  x):
         if self.params['mean'] == None:
             self.params['mean'], self.params['log_std'] = self.data_initializer(x)
             
@@ -51,7 +51,7 @@ class ActNorm(nn.Module, Bijective):
         ldj_multiplier = jnp.array(x.shape[2:]).prod()
         return jnp.sum(-self.params['log_std']).repeat(x.shape[0]) * ldj_multiplier
 
-    def inverse(self, rng, z):
+    def inverse(self, z):
         return self.params['mean'] + z * jnp.exp(self.params['log_std'])
 
 

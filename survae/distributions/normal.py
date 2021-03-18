@@ -15,8 +15,8 @@ class StandardNormal(nn.Module, Distribution):
 
     @classmethod
     def sample(cls, rng, num_samples, params):
-        shape = params.shape[-1]
-        return random.normal(rng, (num_samples,)+(shape,))
+        shape = params.shape
+        return random.normal(rng, (num_samples,)+shape)
 
 class MeanNormal(nn.Module, Distribution):
     
@@ -27,8 +27,8 @@ class MeanNormal(nn.Module, Distribution):
 
     @classmethod
     def sample(cls, rng, num_samples, params):
-        shape = params.shape[-1]
-        return random.normal(rng, (num_samples,)+(shape,)) + params
+        shape = params.shape
+        return random.normal(rng, (num_samples,)+shape) + params
 
 
 class Normal(nn.Module, Distribution):
@@ -42,5 +42,5 @@ class Normal(nn.Module, Distribution):
     @classmethod
     def sample(cls, rng, num_samples, params):
         mean, log_std = jnp.split(params, 2, axis=-1)
-        shape = mean.shape[-1]
-        return random.normal(rng, (num_samples,)+(shape,)) * jnp.exp(log_std) + mean
+        shape = mean.shape
+        return random.normal(rng, (num_samples,)+shape) * jnp.exp(log_std) + mean
