@@ -20,33 +20,35 @@ class Flow(nn.Module, Distribution):
     def setup(self):
         if self.base_dist == None:
             raise TypeError()
+        else:
+            self._base_dist = self.base_dist()
         if type(self.transforms) == list:
             self._transforms = [transform() for transform in self.transforms]
         else:
             self._transforms = []
 
     # TODO we dont need rng for bijections
-    def __call__(self, x, params=None):
-        return self.log_prob(x, params=None)
+    def __call__(self, x, *args, **kwargs):
+        return self.log_prob(x, *args, **kwargs)
 
-    def log_prob(self, x, params=None):
+    def log_prob(self, x, *args, **kwargs):
         log_prob = jnp.zeros(x.shape[0])
         for transform in self._transforms:
-            x, ldj = transform(x)
+            x, ldj = transform(x, *args, **kwargs)
             log_prob += ldj
-        log_prob += self.base_dist.log_prob(x, params=params)
+        log_prob += self._base_dist.log_prob(x, params=jnp.zeros(self.latent_size), *args, **kwargs)
         return log_prob
 
-    def sample(self, rng, num_samples, params=None):
+    def sample(self, rng, num_samples, *args, **kwargs):
 
         # TODO instead of params we can pass latent size
-        if params == None:
-            params=jnp.zeros(self.latent_size)
-        z = self.base_dist.sample(rng, num_samples, params=params)
-        print("======== z =====",z.shape)
+        # if params == None:
+        #     params=jnp.zeros(self.latent_size)
+        z = self._base_dist.sample(rng, num_samples, params=jnp.zeros(self.latent_size), *args, **kwargs)
         for transform in reversed(self._transforms):
-            z = transform.inverse(z)
+            z = transform.inverse(z, *args, **kwargs)
         return z
+
 
 class SimpleRealNVP(Flow):
     base_dist: Distribution = None

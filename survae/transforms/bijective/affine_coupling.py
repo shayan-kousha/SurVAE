@@ -18,10 +18,10 @@ class AffineCoupling(nn.Module, Bijective):
         self.shift_and_log_scale = self.shift_and_log_scale_fn()
     
     @nn.compact
-    def __call__(self, x):
-        return self.forward(x)
+    def __call__(self, x, *args, **kwargs):
+        return self.forward(x, *args, **kwargs)
 
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         mask_size = x.shape[1] // 2
         x0 = x[:, :mask_size]
         x1 = x[:, mask_size:]
@@ -40,7 +40,7 @@ class AffineCoupling(nn.Module, Bijective):
         return z, sum_except_batch(log_scale)
 
 
-    def inverse(self, z):
+    def inverse(self, z, *args, **kwargs):
         mask_size = z.shape[1] // 2
 
         z0 = z[:, :mask_size]

@@ -33,8 +33,8 @@ class Conv1x1(nn.Module, Bijective):
         return dict(weight=weight)     
 
     @nn.compact
-    def __call__(self, x):
-        return self.forward(x)
+    def __call__(self, x, *args, **kwargs):
+        return self.forward(x, *args, **kwargs)
 
     def _conv(self, v, weight):
         
@@ -57,12 +57,12 @@ class Conv1x1(nn.Module, Bijective):
         ldj = ldj_per_pixel * reduce(mul, dims)
         return ldj.repeat(b)
 
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         z = self._conv(x, self.params['weight'])
         ldj = self._logdet(x.shape, self.params['weight'])
         return z, ldj
 
-    def inverse(self, z):
+    def inverse(self, z, *args, **kwargs):
         weight_inv = jax.scipy.linalg.inv(self.params['weight'])
         x = self._conv(z, weight_inv)
         return x
