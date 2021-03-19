@@ -25,7 +25,6 @@ class Flow(nn.Module, Distribution):
         else:
             self._transforms = []
 
-    # TODO we dont need rng for bijections
     def __call__(self, rng, x, params=None):
         return self.log_prob(rng, x, params=None)
 
@@ -39,7 +38,6 @@ class Flow(nn.Module, Distribution):
 
     def sample(self, rng, num_samples, params=None):
 
-        # TODO instead of params we can pass latent size
         if params == None:
             params=jnp.zeros(self.latent_size)
         z = self.base_dist.sample(rng, num_samples, params=params)
@@ -52,7 +50,6 @@ class SimpleRealNVP(Flow):
     transforms: Union[List[Transform],None] = None
     latent_size: Union[Tuple[int],None] = None
 
-    # TODO delete this once __call__ of flow is fixed
     def __call__(self, x):
         return self.log_prob(x)
 
@@ -72,7 +69,6 @@ class SimpleRealNVP(Flow):
         x = self.base_dist.sample(rng, num_samples, params=jnp.zeros(self.latent_size))
         for layer in reversed(self._transforms):
             x = layer.inverse(x)
-        # TODO add log_det_J_layer
 
         return x
 
@@ -81,7 +77,6 @@ class PoolFlow(Flow):
     transforms: Union[List[Transform],None] = None
     latent_size: Union[Tuple[int],None] = None
 
-    # TODO delete this once __call__ of flow is fixed
     def __call__(self, x):
         return self.log_prob(x)
 
@@ -100,7 +95,7 @@ class PoolFlow(Flow):
         
     def sample(self, rng, num_samples): 
         x = self.base_dist.sample(rng, num_samples, params=jnp.zeros(self.latent_size))
-        x = x.reshape(num_samples, 3, 2, 2) # TODO shouldn't be hard coded
+        x = x.reshape(num_samples, 3, 2, 2) 
         for layer in reversed(self._transforms):
             x = layer.inverse(x, rng)
 
@@ -113,7 +108,6 @@ class PoolFlowExperiment(Flow):
     transforms: Union[List[Transform],None] = None
     latent_size: Union[Tuple[int],None] = None
 
-    # TODO delete this once __call__ of flow is fixed
     def __call__(self, x):
         return self.log_prob(x)
 
@@ -159,7 +153,6 @@ class PoolFlowExperiment(Flow):
             "shape": self.current_shape,
         }
         x = self.base_dist.sample(rng, num_samples, params=params)
-        x = x.reshape(num_samples, 3, 2, 2) # TODO shouldn't be hard coded
         for layer in reversed(self._transforms):
             x = layer.inverse(x, rng)
 

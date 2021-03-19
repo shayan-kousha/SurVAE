@@ -9,7 +9,7 @@ import math
 from survae.flows import Flow, PoolFlowExperiment
 from survae.nn.nets import DenseBlock, LambdaLayer, ElementwiseParams2d, DenseNet
 from typing import Any, Optional, List, Union, Tuple
-from survae.transforms import SimpleMaxPoolSurjection2d, Transform, Conv1x1, Squeeze2d, Unsqueeze2d, Sigmoid, VariationalDequantization, ScalarAffineBijection
+from survae.transforms import SimpleMaxPoolSurjection2d, Slice, Transform, Conv1x1, Squeeze2d, Unsqueeze2d, Sigmoid, VariationalDequantization, ScalarAffineBijection
 from flax import linen as nn
 from functools import partial
 from survae.transforms.bijective import Bijective
@@ -21,6 +21,7 @@ from survae.utils import *
 
 from flax import optim
 from survae.distributions import DiagonalNormal, StandardNormal2d, StandardHalfNormal, Distribution
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=64)
@@ -419,7 +420,7 @@ def get_model(data_shape, num_bits, num_scales, num_steps, actnorm, pooling,
                                current_shape[2] // 2)
                 if pooling=='none':
                     transforms.append(Squeeze2d._setup())
-                    transforms.append(Slice._setup(None, StandardNormal, num_keep=current_shape[0], dim=1, latent_shape=noise_shape))
+                    transforms.append(Slice._setup(None, StandardNormal2d, num_keep=current_shape[0], dim=1, latent_shape=noise_shape))
                 elif pooling=='max':
                     transforms.append(SimpleMaxPoolSurjection2d._setup(decoder=StandardHalfNormal, latent_shape=noise_shape))
                 current_shape = (current_shape[0],
@@ -459,10 +460,9 @@ def train_max_pooling():
     optimizer = optimizer_def.create(params)
 
 
-    # @jax.jit
+    @jax.jit
     def loss_fn(params, batch):
-        import ipdb;ipdb.set_trace()
-        return -jnp.sum(pooling_model.apply(params, batch, method=pooling_model.log_prob)) / (math.log(2) *  jnp.prod(batch.shape))
+        return -jnp.sum(pooling_model.apply(params, batch, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
 
     @jax.jit
     def train_step(optimizer, batch):
@@ -472,13 +472,12 @@ def train_max_pooling():
         return optimizer, loss_val
 
 
-    import ipdb;ipdb.set_trace()
     # training loop
     for epoch in range(args.epochs):
         # Train
         for x in train_loader:
             optimizer, loss_val = train_step(optimizer, np.array(x))
-            print(loss_val)
+            print('epoch %s:' % (epoch), 'loss = %.3f' % loss_val)
         # self.log_train_metrics(train_dict)
 
         # # Eval
