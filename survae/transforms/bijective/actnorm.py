@@ -31,8 +31,6 @@ class ActNorm(nn.Module, Bijective):
         axis.pop(1)
         shape = [1]* len(x.shape)
         shape[1] = self.num_features
-        print("===========actnorm axis==========",axis)
-        print("===========actnorm shape==========",shape)
         mean = jax.lax.stop_gradient(x.mean(axis=axis).reshape(*shape))
         log_std = jax.lax.stop_gradient(jnp.log(x.std(axis=axis).reshape(*shape) + self.eps))
         return mean, log_std
