@@ -58,22 +58,6 @@ class Normal(nn.Module, Distribution):
 
 class DiagonalNormal(Distribution):
     """A multivariate Normal with diagonal covariance."""
-
-    # def __init__(self, shape):
-    #     super(DiagonalNormal, self).__init__()
-    #     self.shape = torch.Size(shape)
-    #     self.loc = nn.Parameter(torch.zeros(shape))
-    #     self.log_scale = nn.Parameter(torch.zeros(shape))
-
-    # def log_prob(self, x):
-    #     log_base =  - 0.5 * math.log(2 * math.pi) - self.log_scale
-    #     log_inner = - 0.5 * torch.exp(-2 * self.log_scale) * ((x - self.loc) ** 2)
-    #     return sum_except_batch(log_base+log_inner)
-
-    # def sample(self, num_samples):
-    #     eps = torch.randn(num_samples, *self.shape, device=self.loc.device, dtype=self.loc.dtype)
-    #     return self.loc + self.log_scale.exp() * eps
-
     @classmethod
     def log_prob(cls, x, params):
         loc = params["loc"].reshape((1, -1, 1, 1))
@@ -87,35 +71,6 @@ class DiagonalNormal(Distribution):
         shape = params["shape"]
         return loc + jnp.exp(log_scale) * random.normal(rng, (num_samples,)+(shape))
     
-    # @classmethod
-    # def sample_with_log_prob(cls, rng, num_samples, params):
-    #     samples = cls.sample(rng, num_samples, params)
-    #     log_prob = cls.log_prob(samples, params)
-    #     return samples, log_prob
-
-    # def sample_with_log_prob(self, num_samples):
-    #     """Generates samples from the distribution together with their log probability.
-    #     Args:
-    #         num_samples: int, number of samples to generate.
-    #     Returns:
-    #         samples: Tensor, shape (num_samples, ...)
-    #         log_prob: Tensor, shape (num_samples,)
-    #     """
-    #     samples = self.sample(num_samples)
-    #     log_prob = self.log_prob(samples)
-    #     return samples, log_prob
-
-
-# class ConvNormal2d(DiagonalNormal):
-#     def __init__(self, shape):
-#         super(DiagonalNormal, self).__init__()
-#         assert len(shape) == 3
-#         self.shape = torch.Size(shape)
-#         self.loc = torch.nn.Parameter(torch.zeros(1, shape[0], 1, 1))
-#         self.log_scale = torch.nn.Parameter(torch.zeros(1, shape[0], 1, 1))
-
-
-
 class StandardHalfNormal(Distribution):
     """A standard half-Normal with zero mean and unit covariance."""
 

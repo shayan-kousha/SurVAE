@@ -108,9 +108,6 @@ class PoolFlowExperiment(Flow):
     transforms: Union[List[Transform],None] = None
     latent_size: Union[Tuple[int],None] = None
 
-    def __call__(self, x):
-        return self.log_prob(x)
-
     @staticmethod
     def _setup(current_shape, base_dist, transforms, latent_size):
         return partial(PoolFlow, current_shape, base_dist, transforms, latent_size)
@@ -127,14 +124,10 @@ class PoolFlowExperiment(Flow):
         self.loc = self.param('loc', jax.nn.initializers.zeros, self.current_shape[0])
         self.log_scale = self.param('log_scale', jax.nn.initializers.zeros, self.current_shape[0])
 
-        rng = random.PRNGKey(0)
-        rng, key = random.split(rng)
-        self.rng = [rng]
-
-    def log_prob(self, x):
+    def log_prob(self, rng, x, params=None):
         log_det_J, z =  jnp.zeros(x.shape[0]), x
         for layer in self._transforms:
-            z, log_det_J_layer = layer(self.rng[0], z)
+            z, log_det_J_layer = layer(rng, z)
             # import ipdb;ipdb.set_trace()
             
             log_det_J += log_det_J_layer

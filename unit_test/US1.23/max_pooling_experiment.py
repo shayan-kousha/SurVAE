@@ -22,7 +22,6 @@ from survae.utils import *
 from flax import optim
 from survae.distributions import DiagonalNormal, StandardNormal2d, StandardHalfNormal, Distribution
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--num_workers', type=int, default=4)
@@ -455,52 +454,43 @@ def train_max_pooling():
     rng = random.PRNGKey(0)
     rng, key = random.split(rng)
     pooling_model = PoolFlowExperiment(current_shape=current_shape, base_dist=DiagonalNormal, transforms=transformations, latent_size=None)
-    params = pooling_model.init(key, np.array(next(iter(train_loader)))[:2])
+    params = pooling_model.init(key, rng, np.array(next(iter(train_loader)))[:2])
     optimizer_def = optim.Adam(learning_rate=args.lr)
     optimizer = optimizer_def.create(params)
 
 
     @jax.jit
-    def loss_fn(params, batch):
-        return -jnp.sum(pooling_model.apply(params, batch, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
+    def loss_fn(params, batch, rng):
+        return -jnp.sum(pooling_model.apply(params, rng, batch, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
 
     @jax.jit
-    def train_step(optimizer, batch):
+    def train_step(optimizer, batch, rng):
         grad_fn = jax.value_and_grad(loss_fn)
-        loss_val, grad = grad_fn(optimizer.target, batch)
+        loss_val, grad = grad_fn(optimizer.target, batch, rng)
         optimizer = optimizer.apply_gradient(grad)
         return optimizer, loss_val
 
+    @jax.jit
+    def eval_step(params, batch, rng):
+        return -jnp.sum(pooling_model.apply(params, rng, batch, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
 
     # training loop
     for epoch in range(args.epochs):
         # Train
+        train_loss = []
+        validation_loss = []
         for x in train_loader:
-            optimizer, loss_val = train_step(optimizer, np.array(x))
-            print('epoch %s:' % (epoch), 'loss = %.3f' % loss_val)
-        # self.log_train_metrics(train_dict)
+            optimizer, loss_val = train_step(optimizer, np.array(x), rng)
+            train_loss.append(loss_val)
+        
+        for x in eval_loader:
+            loss_val = eval_step(optimizer.target, np.array(x), rng)
+            validation_loss.append(loss_val)
 
-        # # Eval
-        # if (epoch+1) % self.eval_every == 0:
-        #     eval_dict = self.eval_fn(epoch)
-        #     self.log_eval_metrics(eval_dict)
-        #     self.eval_epochs.append(epoch)
-        # else:
-        #     eval_dict = None
-
-        # # Log
-        # self.save_metrics()
-        # self.log_fn(epoch, train_dict, eval_dict)
-
-        # # Checkpoint
-        # self.current_epoch += 1
-        # if (epoch+1) % self.check_every == 0:
-        #     self.checkpoint_save()
-
-
-
+        print('epoch: %s, train_loss: %.3f, validation_loss: %.3f ' % (epoch, np.mean(train_loss), np.mean(validation_loss)))
 
 if __name__ == "__main__":
     train_max_pooling()
-    # python unit_test/US1.23/max_pooling_experiment.py --batch_size 32 --augmentation eta
-    # --dataset cifar10 --num_scales 2 --num_steps 12 --pooling max --dequant flow --epochs 500
+    # python unit_test/US1.23/max_pooling_experiment.py --epochs 500 --batch_size 64 --optimizer adamax --lr 1e-4 
+    # --gamma 0.995 --eval_every 1 --check_every 10 --warmup 5000 --num_steps 12 --num_scales 2 --dequant flow 
+    # --pooling none --dataset cifar10 --augmentation eta --name nonpool
