@@ -26,13 +26,13 @@ class Flow(nn.Module, Distribution):
             self._transforms = []
 
     # TODO we dont need rng for bijections
-    def __call__(self, rng, x, params=None):
-        return self.log_prob(rng, x, params=None)
+    def __call__(self, x, params=None):
+        return self.log_prob(x, params=None)
 
-    def log_prob(self, rng, x, params=None):
+    def log_prob(self, x, params=None):
         log_prob = jnp.zeros(x.shape[0])
         for transform in self._transforms:
-            x, ldj = transform(rng, x)
+            x, ldj = transform(x)
             log_prob += ldj
         log_prob += self.base_dist.log_prob(x, params=params)
         return log_prob
@@ -81,17 +81,26 @@ class AbsFlow(Flow):
     transforms: Union[List[Transform],None] = None
     latent_size: Union[Tuple[int],None] = None
 
-    def __call__(self, x):
-        return self.log_prob(x)
+    def __call__(self, rng, x):
+        return self.log_prob(rng, x)
+
+    def setup(self):
+        if self.base_dist == None:
+            raise TypeError()
+        if type(self.transforms) == list:
+            self._transforms = [transform() for transform in self.transforms]
+        else:
+            self._transforms = []
+
 
     @staticmethod
     def _setup(base_dist, transforms, latent_size):
-        return partial(SimpleRealNVP, base_dist, transforms, latent_size)
+        return partial(AbsFlow, base_dist=base_dist, transforms=transforms, latent_size=latent_size)
 
-    def log_prob(self, x):
+    def log_prob(self, rng, x):
         log_det_J, z =  jnp.zeros(x.shape[0]), x
         for layer in self._transforms:
-            z, log_det_J_layer = layer(z)
+            z, log_det_J_layer = layer(rng, z)
             log_det_J += log_det_J_layer
 
         return self.base_dist.log_prob(z, params=None) + log_det_J
@@ -99,7 +108,7 @@ class AbsFlow(Flow):
     def sample(self, rng, num_samples):
         x = self.base_dist.sample(rng, num_samples, params=jnp.zeros(self.latent_size))
         for layer in reversed(self._transforms):
-            x = layer.inverse(x)
+            x = layer.inverse(rng, x)
         # TODO add log_det_J_layer
 
         return x

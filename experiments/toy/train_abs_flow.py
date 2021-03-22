@@ -11,6 +11,7 @@ from survae.distributions import StandardNormal, Bernoulli
 from jax import random
 import jax.numpy as jnp 
 from flax import optim
+from matplotlib import pyplot as plt
 
 
 parser = argparse.ArgumentParser()
@@ -25,7 +26,7 @@ parser.add_argument('--num_flows', type=int, default=4)
 parser.add_argument('--actnorm', type=eval, default=False)
 parser.add_argument('--affine', type=eval, default=True)
 parser.add_argument('--scale_fn', type=str, default='exp', choices={'exp', 'softplus', 'sigmoid', 'tanh_exp'})
-parser.add_argument('--hidden_units', type=eval, default=[50])
+parser.add_argument('--hidden_units', type=int, default=50)
 parser.add_argument('--activation', type=str, default='relu', choices={'relu', 'elu', 'gelu'})
 parser.add_argument('--range_flow', type=str, default='logit', choices={'logit', 'softplus'})
 
@@ -74,7 +75,7 @@ elif args.dataset == 'eightgaussians':
 transforms = [Abs._setup(Bernoulli)]
 
 scale = jnp.array([[1/4, 1/4]])
-transforms += [Scale._setup(scale)]
+transforms += [Scale._setup(scale), Logit._setup(eps=1e-6, temperature=1)]
 
 D = 2 # Number of data dimensions
 P = 2 if args.affine else 1 # Number of elementwise parameters
@@ -104,26 +105,31 @@ class Transform(nn.Module):
         return x, nn.tanh(log_scale)
 
 for layer in range(args.num_flows):
-	net = AffineCoupling._setup(Transform._setup(StandardNormal, args.hidden_units, train_data[0].shape[0]), _reverse_mask=layer % 2 != 0)
+	net = AffineCoupling._setup(Transform._setup(StandardNormal, args.hidden_units , train_data[0].shape[0]), _reverse_mask=layer % 2 != 0)
 	transforms.append(net)
 
-
 # Construct Flow
-absflow = AbsFlow(base_dist=StandardNormal, transforms=transforms, latent_size=2)
-params = absflow.init(key, train_data[:2])
-print(params)
+absflow = AbsFlow(base_dist=StandardNormal, transforms=transforms, latent_size=(2,))
+params = absflow.init(key, rng, train_data[:2])
+
+# Plot training data
+scat = plt.scatter(train_data[:, 0], train_data[:, 1], cmap="bwr", alpha=0.5, )
+plt.savefig('./experiments/toy/train_data.png')
+scat.remove()
+
+# Plot the model samples before training
+before_train = absflow.apply(params, rng, args.train_samples, method=absflow.sample)
+scat = plt.scatter(before_train[:, 0], before_train[:, 1], cmap="bwr", alpha=0.5, )
+plt.savefig('./experiments/toy/before_train.png')
+scat.remove()
+
 # Define Optimizer
 optimizer_def = optim.Adam(learning_rate=args.lr)
 optimizer = optimizer_def.create(params)
 
-
-# print(absflow.apply(params, train_data, method=absflow.log_prob).shape)
-# print(-jnp.mean(absflow.apply(params, train_data, method=absflow.log_prob)))
-# exit(0)
-
 @jax.jit
 def loss_fn(params, batch):
-    return -jnp.mean(absflow.apply(params, batch, method=absflow.log_prob))
+    return -jnp.mean(absflow.apply(params, rng, batch, method=absflow.log_prob))
 
 @jax.jit
 def train_step(optimizer, batch):
@@ -137,7 +143,6 @@ for e in range(args.epochs):
     for batch in range(int(args.train_samples/args.batch_size)):
         train_batch = train_data[batch*args.batch_size:(batch+1)*args.batch_size]
         optimizer, loss_val = train_step(optimizer, np.round(train_batch, 4))
-    print([i for i in params.keys()])
     if e % 5 == 0:
         validation_loss = loss_fn(optimizer.target, test_data)
         
@@ -147,3 +152,7 @@ for e in range(args.epochs):
         # plt.savefig('./unit_test/US1.03/samples/{}/epoch-{}.png'.format(dataset.name, e))
 
         print('epoch %s/%s batch %s/%s:' % (e+1, args.epochs, batch, int(args.train_samples/args.batch_size)), 'loss = %.3f' % loss_val, 'val_loss = %0.3f' % validation_loss)
+
+after_train = absflow.apply(optimizer.target, rng, args.train_samples, method=absflow.sample)
+plt.scatter(after_train[:, 0], after_train[:, 1], cmap="bwr", alpha=0.5, )
+plt.savefig('./experiments/toy/after_train.png')

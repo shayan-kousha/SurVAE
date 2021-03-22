@@ -16,13 +16,16 @@ class Abs(nn.Module, Surjective):
 	# @staticmethod
  #    def _setup(base_dist):
  #        return partial(Abs, base_dist)
+	@nn.compact
+	def __call__(self, rng, x):
+		return self.forward(rng, x)
+        
 	@staticmethod
 	def _setup(base_dist):
 		return partial(Abs, base_dist)
 
-	def forward(self, x):
+	def forward(self, rng, x):
 		z = jnp.abs(x)
-		print("forward")
 		numel = 1
 		for nml in x.shape[1:]:
 			numel *= nml
@@ -31,8 +34,12 @@ class Abs(nn.Module, Surjective):
     
 
 	def inverse(self, rng, z):
-		ber = 2 * self.base_dist.sample(rng, z.shape[0]) - 1
-		print("inverse")
-		ber = ber[:, 0]
+		numel = 1
+		for nml in z.shape:
+			numel *= nml
+		ber = 2 * self.base_dist.sample(rng, numel) - 1
+		ber = ber.reshape(z.shape)
+		# ber = ber[:, 0]
+		# print(ber.shape, z.shape)
 		x = ber * z
 		return x    
