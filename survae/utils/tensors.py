@@ -17,5 +17,6 @@ def params_count(params):
     flatten(_params,params)
     m = 0
     for p in _params:
-        m += np.array(p.shape).prod()
+        if type(p) != type(None):
+            m += np.array(p.shape).prod()
     return m

@@ -15,16 +15,16 @@ class Shift(nn.Module, Bijective):
         return partial(Shift, shift=shift)   
  
     @nn.compact
-    def __call__(self, rng, x):
-        return self.forward(rng, x)
+    def __call__(self, x, *args, **kwargs):
+        return self.forward(x)
 
 
-    def forward(self, rng, x):
+    def forward(self, x, *args, **kwargs):
         z = x + self.shift
         ldj = jnp.zeros(x.shape[0])
         return z, ldj
 
-    def inverse(self, rng, z):
+    def inverse(self, z, *args, **kwargs):
         x = z - self.shift
         return x
 

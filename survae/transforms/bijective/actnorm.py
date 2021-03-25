@@ -9,13 +9,14 @@ import jax
 
 class ActNorm(nn.Module, Bijective):
     num_features: int
+    axis: int = 1
     eps: float = 1e-6
     params: FrozenDict = None
     
 
     @staticmethod
-    def _setup(num_features):
-        return partial(ActNorm, num_features=num_features)   
+    def _setup(num_features, axis=1):
+        return partial(ActNorm, num_features=num_features, axis=axis)   
     
     def setup(self):
         params = self.param('actnorm_params', self.initializer)
@@ -28,9 +29,9 @@ class ActNorm(nn.Module, Bijective):
 
     def data_initializer(self, x):
         axis = list(range(len(x.shape)))
-        axis.pop(1)
+        axis.pop(self.axis)
         shape = [1]* len(x.shape)
-        shape[1] = self.num_features
+        shape[self.axis] = self.num_features
         mean = jax.lax.stop_gradient(x.mean(axis=axis).reshape(*shape))
         log_std = jax.lax.stop_gradient(jnp.log(x.std(axis=axis).reshape(*shape) + self.eps))
         return mean, log_std
