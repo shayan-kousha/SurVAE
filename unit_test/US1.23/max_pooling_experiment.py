@@ -9,7 +9,7 @@ import math
 from survae.flows import Flow, PoolFlowExperiment
 from survae.nn.nets import DenseBlock, LambdaLayer, ElementwiseParams2d, DenseNet
 from typing import Any, Optional, List, Union, Tuple
-from survae.transforms import SimpleMaxPoolSurjection2d, Slice, Transform, Conv1x1, Squeeze2d, Unsqueeze2d, Sigmoid, VariationalDequantization, ScalarAffineBijection
+from survae.transforms import UniformDequantization, SimpleMaxPoolSurjection2d, Slice, Transform, Conv1x1, Squeeze2d, Unsqueeze2d, Sigmoid, VariationalDequantization, ScalarAffineBijection
 from flax import linen as nn
 from functools import partial
 from survae.transforms.bijective import Bijective
@@ -374,7 +374,7 @@ def get_model(data_shape, num_bits, num_scales, num_steps, actnorm, pooling,
         transforms = []
         current_shape = data_shape
         if dequant == 'uniform':
-            transforms.append(UniformDequantization(num_bits=num_bits))
+            transforms.append(UniformDequantization._setup(num_bits=num_bits))
         elif dequant == 'flow':
             dequantize_flow = DequantizationFlow._setup(data_shape=data_shape,
                                                         num_bits=num_bits,
@@ -494,3 +494,4 @@ if __name__ == "__main__":
     # python unit_test/US1.23/max_pooling_experiment.py --epochs 500 --batch_size 64 --optimizer adamax --lr 1e-4 
     # --gamma 0.995 --eval_every 1 --check_every 10 --warmup 5000 --num_steps 12 --num_scales 2 --dequant flow 
     # --pooling none --dataset cifar10 --augmentation eta --name nonpool
+

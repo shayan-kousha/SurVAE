@@ -80,7 +80,8 @@ class StandardHalfNormal(Distribution):
         log_base =    - 0.5 * math.log(2 * math.pi)
         log_inner =   - 0.5 * x**2
         log_probs = log_scaling+log_base+log_inner
-        log_probs = jax.ops.index_update(log_probs, x < 0 , -math.inf)
+        log_probs = jnp.where(x < 0, -math.inf, log_probs)
+
         return sum_except_batch(log_probs)
 
     @classmethod
