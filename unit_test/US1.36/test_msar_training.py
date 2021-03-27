@@ -21,6 +21,7 @@ from functools import partial
 from survae.utils.tensors import params_count
 from flax.training import checkpoints
 from flax.metrics import tensorboard
+import ipdb
 
 
 FLAGS = flags.FLAGS
@@ -81,6 +82,16 @@ flags.DEFINE_bool(
     help=('multi-scale')
 )
 
+flags.DEFINE_integer(
+    'num_samples', default=64,
+    help=('number of samples')
+)
+
+flags.DEFINE_integer(
+    'seed', default=3,
+    help=('seed')
+)
+
 class Transform(nn.Module):
     
     hidden_layer: int
@@ -95,18 +106,18 @@ class Transform(nn.Module):
         x = jnp.transpose(x,[0,2,3,1])
         x = nn.Conv(self.hidden_layer,kernel_size=(3,3))(x)
         x, _ = survae.ActNorm(num_features=self.hidden_layer, axis=3)(x)
-        x = nn.leaky_relu(x)
+        x = nn.relu(x)
         x = nn.Conv(self.hidden_layer,kernel_size=(1,1))(x)
         x, _ = survae.ActNorm(num_features=self.hidden_layer, axis=3)(x)
-        x = nn.leaky_relu(x)
+        x = nn.relu(x)
         x = nn.Conv(self.output_layer,kernel_size=(3,3),
                 kernel_init=jax.nn.initializers.zeros,bias_init=jax.nn.initializers.zeros)(x)
-        shift, log_scale = np.split(x, 2, axis=-1)
-        return jnp.transpose(shift,[0,3,1,2]), jnp.transpose(nn.sigmoid(log_scale),[0,3,1,2])
+        shift, scale = np.split(x, 2, axis=-1)
+        return jnp.transpose(shift,[0,3,1,2]), jnp.transpose(scale,[0,3,1,2])
 
 # Best 32 3 32 323 96 3 LSTM = 1
 def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
-    bijections = [survae.UniformDequantization._setup(),survae.Shift._setup(0.5)]
+    bijections = [survae.UniformDequantization._setup(),survae.Shift._setup(-0.5)]
     _H = H
     # layer = int(np.log2(_H))
     for i in range(layer):
@@ -116,18 +127,19 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
         W //= 2
         for j in range(num_flow_steps):
             bijections += [survae.ActNorm._setup(C), survae.Conv1x1._setup(C,True),
-                        survae.AffineCoupling._setup(Transform._setup(hidden, C), _reverse_mask=j % 2 != 0)]
+                        survae.AffineCoupling._setup(Transform._setup(hidden, C),
+                                        _reverse_mask=j % 2 != 0, 
+                                        activation = lambda x: jnp.exp(x))]
         if i < layer - 1 and FLAGS.ms:
-            # bijections += [survae.ActNorm._setup(C)]
             C //= 2
             if FLAGS.base_dist == 'ar':
                 _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.Normal,
                                                                 features=2,kernel_size=(3,3),
                                                                 latent_size=(C,H,W),num_layers=3)
             else:
+                # _base_dist = survae.ConditionalNormal._setup(features=C,kernel_size=(3,3))
                 _base_dist = survae.StandardNormal
             bijections += [survae.Split._setup(survae.Flow._setup(_base_dist,[],(C,H,W)),C, dim=1)]
-    # bijections += [survae.ActNorm._setup(C)]
     if FLAGS.base_dist == 'ar':
         _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.Normal,
                                                         features=2,kernel_size=(3,3),
@@ -142,19 +154,20 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
 @jax.jit
 def train_step(optimizer, batch, lr, rng):
     def loss_fn(params):
-        log_prob = model().apply({'params': params}, batch, rng=rng)
+        log_prob, norm = model().apply({'params': params}, batch, debug=False,rng=rng)
         log_prob /= float(np.log(2.)*3*32*32)
+        norm /= float(np.log(2.)*3*32*32)
         return -log_prob.mean()
     grad_fn = jax.value_and_grad(loss_fn)
-    value, grad = grad_fn(optimizer.target)
+    value,  grad = grad_fn(optimizer.target)
     optimizer = optimizer.apply_gradient(grad,learning_rate=lr)
     return optimizer, value
 
 @jax.jit
 def eval_step(params, batch, rng):
-    return model().apply({'params': params}, batch, rng=rng)
+    return model().apply({'params': params}, batch, debug=False,rng=rng)
 
-def sampling(params,rng,num_samples=16):
+def sampling(params,rng,num_samples=4):
     generate_images = model().apply({'params': params}, rng=rng, num_samples=num_samples, _rng=rng ,method=model().sample)
     generate_images = jnp.transpose(generate_images,(0,2,3,1))
     return generate_images
@@ -162,19 +175,23 @@ def sampling(params,rng,num_samples=16):
 def eval(params, dataloader, z_rng, sample=False):
     print("===== Evaluating ========")
 
-
     log_prob = []
+    norm = []
     for x, _ in dataloader:
         x = jnp.array(x)
-        log_prob.append(eval_step(params, x, z_rng))
+        _log_prob, _norm = eval_step(params, x, z_rng)
+        log_prob.append(_log_prob)
+        norm.append(_norm)
     generate_images = None
     if sample:
-        # generate_images = model().apply({'params': params}, rng=z_rng, num_samples=64, _rng=z_rng ,method=model().sample)
-        # generate_images = jnp.transpose(generate_images,(0,2,3,1))
-        generate_images = sampling(params,z_rng,num_samples=16)
-    log_prob = jnp.concatenate(log_prob,axis=0).mean()
+        print("===== Sampling ========")
+        generate_images = sampling(params,z_rng,num_samples=FLAGS.num_samples)
+    log_prob = jnp.array(log_prob).mean()
     log_prob /= float(np.log(2.)*3*32*32)
-    return -log_prob.mean(), generate_images
+    # ipdb.set_trace()
+    norm = jnp.array(norm).mean()
+    norm /= float(np.log(2.)*3*32*32)
+    return -log_prob, norm, generate_images
 
 
 
@@ -184,7 +201,7 @@ def eval(params, dataloader, z_rng, sample=False):
 def main(argv):
     del argv
 
-    rng = random.PRNGKey(0)
+    rng = random.PRNGKey(FLAGS.seed)
     rng, key = random.split(rng)
 
 
@@ -221,12 +238,18 @@ def main(argv):
         start_epoch = optimizer.state_dict()['state']['step']//train_loader.__len__()
     optimizer = jax.device_put(optimizer)
 
-    rng, z_key, eval_rng = random.split(rng, 3)
+    rng, eval_rng = random.split(rng, 2)
     print("Start Training")
-    test_loss, _ = eval(optimizer.target, test_loader, eval_rng, sample=False)
-    print('test epoch: {}, loss: {:.4f}'.format(
-        -1, test_loss
-    ))    
+    test_loss, test_norm, samples = eval(optimizer.target, test_loader, eval_rng, sample=True)
+    print('test epoch: {}, loss: {:.4f}, norm_ldj: {:.4f}'.format(
+        start_epoch-1, test_loss, test_norm
+    ))
+    if samples != None:
+        try:
+            os.mkdir(FLAGS.ckptdir)
+        except:
+            pass
+        survae.save_image(samples, FLAGS.ckptdir+f'/sample_{start_epoch-1}.png', nrow=8)
     i = 1 + optimizer.state_dict()['state']['step']
     for epoch in range(start_epoch,FLAGS.num_epochs):
         train_bar = tqdm(train_loader)
@@ -243,13 +266,19 @@ def main(argv):
             i += 1
             
 
-        test_loss, _ = eval(optimizer.target, test_loader, eval_rng, sample=False )
+        test_loss, test_norm, samples = eval(optimizer.target, test_loader, eval_rng, sample=True)
         
 
         assert (jnp.isfinite(test_loss)).all() == True
-        print('test epoch: {}, loss: {:.4f}'.format(
-            epoch , test_loss
+        print('test epoch: {}, loss: {:.4f}, norm_ldj: {:.4f}'.format(
+            epoch, test_loss, test_norm
         ))            
+        if samples != None:
+            try:
+                os.mkdir(FLAGS.ckptdir)
+            except:
+                pass
+            survae.save_image(samples, FLAGS.ckptdir+f'/sample_{epoch}.png', nrow=8)
         if FLAGS.ckptdir != None:
             print("================= Saving ================")
             checkpoints.save_checkpoint(FLAGS.ckptdir, optimizer, epoch, keep=3)

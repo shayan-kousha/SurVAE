@@ -26,7 +26,7 @@ class Split(nn.Module, Bijective):
 
     def forward(self, x, *args, **kwargs):
         z = jnp.split(x,[self.num_keep, x.shape[self.dim]],axis=self.dim)
-        ldj =  self._flow.log_prob(z[1],cond=z[0])
+        ldj =  self._flow.log_prob(z[1], cond=z[0])
         return z[0], ldj
 
     def inverse(self, z1, _rng, *args, **kwargs):

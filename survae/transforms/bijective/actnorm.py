@@ -32,9 +32,10 @@ class ActNorm(nn.Module, Bijective):
         axis.pop(self.axis)
         shape = [1]* len(x.shape)
         shape[self.axis] = self.num_features
-        mean = jax.lax.stop_gradient(x.mean(axis=axis).reshape(*shape))
-        log_std = jax.lax.stop_gradient(jnp.log(x.std(axis=axis).reshape(*shape) + self.eps))
-        return mean, log_std
+        mean = x.mean(axis=axis).reshape(*shape)
+        log_std = jnp.log(x.std(axis=axis).reshape(*shape))
+        # log_std = jnp.maximum(log_std, 0.2)
+        return jax.lax.stop_gradient(mean), jax.lax.stop_gradient(log_std)
 
     @nn.compact
     def __call__(self, x, *args, **kwargs):

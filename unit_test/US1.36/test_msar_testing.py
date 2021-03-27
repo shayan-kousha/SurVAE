@@ -10,7 +10,6 @@ from jax.config import config
 config.update("jax_debug_nans", True)
 from flax import linen as nn
 from flax import optim
-import flax
 import os
 import sys
 sys.path.append(".")
@@ -23,6 +22,7 @@ from survae.utils.tensors import params_count
 from flax.training import checkpoints
 from flax.metrics import tensorboard
 import ipdb
+
 
 FLAGS = flags.FLAGS
 
@@ -37,7 +37,7 @@ flags.DEFINE_integer(
 )
 
 flags.DEFINE_integer(
-    'init_size', default=2,
+    'init_size', default=64,
     help=('Batch size for initialization.')
 )
 
@@ -66,15 +66,9 @@ flags.DEFINE_string(
     help=('log dir')
 )
 
-flags.DEFINE_string(
-    'resultdir', default='unit_test/US1.36/results',
-    help=('result dir')
-)
-
-
-flags.DEFINE_integer(
-    'num_samples', default=64,
-    help=('number of samples')
+flags.DEFINE_bool(
+    'resume', default=False,
+    help=('resume checkpoint')
 )
 
 
@@ -88,6 +82,15 @@ flags.DEFINE_bool(
     help=('multi-scale')
 )
 
+flags.DEFINE_integer(
+    'num_samples', default=64,
+    help=('number of samples')
+)
+
+flags.DEFINE_integer(
+    'seed', default=3,
+    help=('seed')
+)
 
 class Transform(nn.Module):
     
@@ -126,19 +129,20 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
             bijections += [survae.ActNorm._setup(C), survae.Conv1x1._setup(C,True),
                         survae.AffineCoupling._setup(Transform._setup(hidden, C),
                                         _reverse_mask=j % 2 != 0, 
-                                        activation = lambda x: jnp.exp(jnp.tanh(x)))]
+                                        activation = lambda x: jnp.exp(x))]
         if i < layer - 1 and FLAGS.ms:
             C //= 2
             if FLAGS.base_dist == 'ar':
-                _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.Normal,
-                                                                features=2,kernel_size=(3,3),
+                _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.StandardNormal,
+                                                                features=C,kernel_size=(3,3),
                                                                 latent_size=(C,H,W),num_layers=0)
             else:
-                _base_dist = survae.ConditionalNormal._setup(features=C,kernel_size=(3,3))
+                # _base_dist = survae.ConditionalNormal._setup(features=C,kernel_size=(3,3))
+                _base_dist = survae.StandardNormal
             bijections += [survae.Split._setup(survae.Flow._setup(_base_dist,[],(C,H,W)),C, dim=1)]
     if FLAGS.base_dist == 'ar':
-        _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.Normal,
-                                                        features=2,kernel_size=(3,3),
+        _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.StandardNormal,
+                                                        features=C,kernel_size=(3,3),
                                                         latent_size=(C,H,W),num_layers=0)
     else:
         _base_dist = survae.StandardNormal
@@ -150,17 +154,18 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
 @jax.jit
 def train_step(optimizer, batch, lr, rng):
     def loss_fn(params):
-        log_prob = model().apply({'params': params}, batch, rng=rng)
+        log_prob, norm = model().apply({'params': params}, batch, debug=False,rng=rng)
         log_prob /= float(np.log(2.)*3*32*32)
+        norm /= float(np.log(2.)*3*32*32)
         return -log_prob.mean()
     grad_fn = jax.value_and_grad(loss_fn)
-    value, grad = grad_fn(optimizer.target)
+    value,  grad = grad_fn(optimizer.target)
     optimizer = optimizer.apply_gradient(grad,learning_rate=lr)
     return optimizer, value
 
-@jax.jit
+
 def eval_step(params, batch, rng):
-    return model().apply({'params': params}, batch,rng=rng)
+    return model().apply({'params': params}, batch, debug=True,rng=rng)
 
 def sampling(params,rng,num_samples=4):
     generate_images = model().apply({'params': params}, rng=rng, num_samples=num_samples, _rng=rng ,method=model().sample)
@@ -169,17 +174,24 @@ def sampling(params,rng,num_samples=4):
 
 def eval(params, dataloader, z_rng, sample=False):
     print("===== Evaluating ========")
+
     log_prob = []
-    # for x, _ in dataloader:
-    #     x = jnp.array(x)
-    #     log_prob.append(eval_step(params, x, z_rng))
-    # generate_images = None
+    norm = []
+    for x, _ in dataloader:
+        x = jnp.array(x)
+        _log_prob, _norm = eval_step(params, x, z_rng)
+        log_prob.append(_log_prob)
+        norm.append(_norm)
+    generate_images = None
     if sample:
+        print("===== Sampling ========")
         generate_images = sampling(params,z_rng,num_samples=FLAGS.num_samples)
-    # log_prob = jnp.concatenate(log_prob,axis=0).mean()
-    # log_prob /= float(np.log(2.)*3*32*32)
-    # return -log_prob.mean(), generate_images
-    return None, generate_images
+    log_prob = jnp.array(log_prob).mean()
+    log_prob /= float(np.log(2.)*3*32*32)
+    # ipdb.set_trace()
+    norm = jnp.array(norm).mean()
+    norm /= float(np.log(2.)*3*32*32)
+    return -log_prob, norm, generate_images
 
 
 
@@ -189,7 +201,7 @@ def eval(params, dataloader, z_rng, sample=False):
 def main(argv):
     del argv
 
-    rng = random.PRNGKey(0)
+    rng = random.PRNGKey(FLAGS.seed)
     rng, key = random.split(rng)
 
 
@@ -209,34 +221,30 @@ def main(argv):
     test_ds = torchvision.datasets.CIFAR10(root="./survae/data/datasets/cifar10/", 
                                             train=False, download=True, transform=transform_test)
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=FLAGS.test_size, drop_last=True)
-    
+
     init_loader = torch.utils.data.DataLoader(train_ds, batch_size=FLAGS.init_size, shuffle=True,drop_last=True)
     init_data = jnp.array(next(iter(init_loader))[0])
-    print("Max for init data", init_data.max())
-    print("Min for init data", init_data.min())
-    print("Mean for init data", init_data.mean())
 
+    print("Start initialization")
+    print("init data shape",init_data.shape,type(init_data))
     params = model().init(rng, x=init_data, rng=rng)['params']
+    print("Number of parameters",params_count(params))
+
+
     optimizer = optim.Adam(learning_rate=FLAGS.learning_rate).create(params)
-    optimizer = checkpoints.restore_checkpoint(FLAGS.ckptdir,optimizer)
-    start_epoch = optimizer.state_dict()['state']['step']//train_loader.__len__()
-
-    print("Number of parameters",params_count(optimizer.target))
-    
+    start_epoch = 0
+    if FLAGS.resume:
+        optimizer = checkpoints.restore_checkpoint(FLAGS.ckptdir,optimizer)
+        start_epoch = optimizer.state_dict()['state']['step']//train_loader.__len__()
     optimizer = jax.device_put(optimizer)
-    
-    rng, z_key, eval_rng = random.split(rng, 3)
-    
-    test_loss, samples = eval(optimizer.target, test_loader, eval_rng, sample=True)
-    print("Max for sample data", samples.astype(jnp.uint8).max())
-    print("Min for sample data", samples.astype(jnp.uint8).min())
-    print("Mean for sample data", samples.astype(jnp.uint8).mean())
 
-    try:
-        os.mkdir(FLAGS.resultdir)
-    except:
-        pass
-    survae.save_image(samples, FLAGS.resultdir+f'/sample_{start_epoch-1}.png', nrow=8)
+    rng, z_key, eval_rng = random.split(rng, 3)
+    print("Start Training")
+    test_loss, test_norm, samples = eval(optimizer.target, test_loader, eval_rng, sample=False)
+    print('test epoch: {}, loss: {:.4f}, norm_ldj: {:.4f}'.format(
+        start_epoch-1, test_loss, test_norm
+    ))
+ 
 
 if __name__ == '__main__':
     app.run(main)

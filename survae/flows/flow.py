@@ -29,25 +29,37 @@ class Flow(nn.Module, Distribution):
             self._transforms = []
 
     # TODO we dont need rng for bijections
-    def __call__(self, x, *args, **kwargs):
-        return self.log_prob(x, *args, **kwargs)
+    def __call__(self, x, debug=False, *args, **kwargs):
+        return self.log_prob(x, debug, *args, **kwargs)
 
-    def log_prob(self, x, *args, **kwargs):
+    def log_prob(self, x, debug=False, *args, **kwargs):
         log_prob = jnp.zeros(x.shape[0])
-        for transform in self._transforms:
+        norm = jnp.zeros(x.shape[0])
+        for i,transform in enumerate(self._transforms):
             x, ldj = transform(x, *args, **kwargs)
-            log_prob += ldj
+            if debug:
+                ipdb.set_trace()
+            if isinstance(ldj, tuple):
+                log_prob += ldj[0]
+                norm += ldj[1]**2
+            elif transform.__class__.__name__ == 'UniformDequantization':
+                log_prob += ldj
+            else:
+                log_prob += ldj
+                norm += ldj**2
         # ipdb.set_trace()
         log_prob += self._base_dist.log_prob(x, params=jnp.zeros(self.latent_size), *args, **kwargs)
-        return log_prob
+        return log_prob, norm
 
     def sample(self, rng, num_samples, *args, **kwargs):
 
         # TODO instead of params we can pass latent size
         # if params == None:
         #     params=jnp.zeros(self.latent_size)
-        z = self._base_dist.sample(rng, num_samples, jnp.zeros(self.latent_size), *args, **kwargs)
-        for transform in reversed(self._transforms):
+        # ipdb.set_trace()
+        z = self._base_dist.sample(rng=rng, num_samples=num_samples, params=jnp.zeros(self.latent_size), *args, **kwargs)
+        for i, transform in enumerate(reversed(self._transforms)):
+            # ipdb.set_trace()
             z = transform.inverse(z, *args, **kwargs)
         return z
 

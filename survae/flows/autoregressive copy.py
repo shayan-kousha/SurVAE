@@ -24,9 +24,13 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
 
     def setup(self):
         self.conv_in = nn.Conv(features=1, kernel_size=self.kernel_size)
-        self.conv_cond = nn.Conv(features=self.features, kernel_size=self.kernel_size)
-        self.conv_out = nn.Conv(features=self.features, kernel_size=self.kernel_size)
-
+        self.conv_cond1 = nn.Conv(features=self.features, kernel_size=self.kernel_size)
+        self.conv_cond2 = nn.Conv(features=self.features, kernel_size=self.kernel_size)
+        # self.actnorm_cond = ActNorm(num_features=self.features, axis=-1)
+        # self.conv_out = nn.Conv(features=self.features, kernel_size=self.kernel_size)
+        self.conv_out1 = nn.Conv(features=self.features, kernel_size=self.kernel_size)
+        self.conv_out2 = nn.Conv(features=self.features, kernel_size=self.kernel_size)
+        # self.actnorm_out = ActNorm(num_features=self.features, axis=-1)
         self.lstm = [nn.ConvLSTM(features=self.features, 
                         kernel_size=self.kernel_size) for _ in range(self.num_layers)]
         if self.base_dist == None:
@@ -38,7 +42,7 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
         return self.log_prob(x, cond=cond)      
 
     def log_prob(self, x, params=None, cond=None, *args, **kwargs):
-        log_prob, _ = self.autoregressive(x=x, cond=cond)
+        log_prob, _ = self.autoregressive(x, cond=cond)
         return log_prob
 
     def sample(self, rng, num_samples, params=None,  cond=None, *args, **kwargs):
@@ -52,50 +56,48 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
     def autoregressive(self, x, rng=None, cond=None):
         # if type(rng) != type(None):
         #     ipdb.set_trace()
-        
+            
         x = jnp.transpose(x,(0,2,3,1))
         shape = x.shape
-
-        # if cond != None:
-        #     params = self.conv_cond2(jnp.tanh(self.conv_cond1(cond)))
-        # params = jnp.zeros(shape[:3]+(shape[-1]*2,))
-        # log_prob = jnp.zeros((shape[0],))
-        # if type(rng) != type(None):
-        #     x = self.base_dist.sample(rng=rng,num_samples=1,params=params, axis=-1).squeeze(axis=(0,))
-        # else:
-        #     log_prob = self.base_dist.log_prob(x, params=params, axis=-1)
-        # x = jnp.transpose(x,(0,3,1,2))
-        # return log_prob, x
-
-
         if cond != None:
             # cond - In: NHWC Out: NHW+self.feature
-            cond = jax.lax.stop_gradient(cond)
             cond = jnp.transpose(cond,(0,2,3,1))
-            cond = self.conv_cond(cond)
-        
+            cond = self.conv_cond2(jnp.tanh(self.conv_cond1(cond)))
+            params = self.conv_out2(jax.nn.relu(self.conv_out1(
+                            jnp.concatenate(
+                                (jnp.zeros(shape[:3]+(self.features,)),cond)
+                            ,axis=3))))
+        else:
+            params = jnp.zeros(shape[:3]+(self.features,))
         
         lstm_state = [self.lstm[i].initialize_carry(random.PRNGKey(0), 
                         (shape[0],), (shape[1],shape[2],self.features))
                         for i in range(self.num_layers)]
 
-        _x = jnp.zeros(shape[:3]+(1,))
-        log_prob = jnp.zeros((shape[0],))
-        for c in range(shape[-1]):
-            if cond != None:
-                # _x = jnp.zeros(shape[:3]+(1,))
-                _x = jnp.concatenate((_x,cond),axis=3)
-            _x = self.conv_in(jax.lax.stop_gradient(_x))
+        if type(rng) != type(None):
+            x = jax.ops.index_update(x, jax.ops.index[:,:,:,0], self.base_dist.sample(rng,1,params).squeeze(axis=(0,-1)))
+
+        log_prob = self.base_dist.log_prob(jnp.expand_dims(x[:,:,:,0],axis=-1), params)
+        for c in range(shape[-1]-1):
+            _x = jnp.expand_dims(x[:,:,:,c],axis=-1)
+            _x = self.conv_in(_x)
             for i in range(self.num_layers):     
                 lstm_state[i], _x = self.lstm[i](lstm_state[i], _x)
-            params = self.conv_out(_x)
-            # params = jnp.zeros(x.shape[:3]+(self.features,))
-            if type(rng) != type(None):
-                rng, _ = random.split(rng)
-                x = jax.ops.index_update(x, jax.ops.index[:,:,:,c], self.base_dist.sample(rng,1,params).squeeze(axis=(0,-1)))
+            if cond != None:
+                y = jnp.concatenate((_x,cond),axis=3)
+                params = self.conv_out2(jax.nn.relu(self.conv_out1(y)))
             else:
-                log_prob += self.base_dist.log_prob(jnp.expand_dims(x[:,:,:,c],axis=-1), params)
-            _x = jnp.expand_dims(x[:,:,:,c],axis=-1)
+                params = self.conv_out2(jax.nn.relu(self.conv_out1(_x)))
+            # params = self.conv_out(y)
+            if type(rng) != type(None):
+                x = jax.ops.index_update(x, jax.ops.index[:,:,:,c+1], self.base_dist.sample(rng,1,params).squeeze(axis=(0,-1)))
+            log_prob += self.base_dist.log_prob(jnp.expand_dims(x[:,:,:,c+1],axis=-1), params)
+            # params.append(_params)
+        # params = jnp.concatenate(params,axis=3)
+        ### rearange the params so it is mean and then conv ###
+        # params = jnp.concatenate([params[:,:,:,i::self.features] for i in range(self.features)],axis=3)
+        # log_prob = jnp.zeros(shape[0])
+        # log_prob += self.base_dist.log_prob(x, params=params)
 
         x = jnp.transpose(x,(0,3,1,2))
         return log_prob, x

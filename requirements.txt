@@ -9,3 +9,5 @@ ipdb
 tensorflow-datasets
 torch
 torchvision
+tqdm
+absl-py
