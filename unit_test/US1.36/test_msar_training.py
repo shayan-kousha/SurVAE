@@ -115,7 +115,7 @@ class Transform(nn.Module):
         shift, scale = np.split(x, 2, axis=-1)
         return jnp.transpose(shift,[0,3,1,2]), jnp.transpose(scale,[0,3,1,2])
 
-# Best 32 3 32 323 96 3 LSTM = 1
+# Best 32 3 32 32 96 3 LSTM = 1
 def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
     bijections = [survae.UniformDequantization._setup(),survae.Shift._setup(-0.5)]
     _H = H
@@ -129,13 +129,13 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
             bijections += [survae.ActNorm._setup(C), survae.Conv1x1._setup(C,True),
                         survae.AffineCoupling._setup(Transform._setup(hidden, C),
                                         _reverse_mask=j % 2 != 0, 
-                                        activation = lambda x: jnp.exp(x))]
+                                        activation = lambda x: jnp.exp(jnp.tanh(x)))]
         if i < layer - 1 and FLAGS.ms:
             C //= 2
             if FLAGS.base_dist == 'ar':
                 _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.Normal,
                                                                 features=2,kernel_size=(3,3),
-                                                                latent_size=(C,H,W),num_layers=3)
+                                                                latent_size=(C,H,W),num_layers=1)
             else:
                 # _base_dist = survae.ConditionalNormal._setup(features=C,kernel_size=(3,3))
                 _base_dist = survae.StandardNormal
@@ -143,7 +143,7 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
     if FLAGS.base_dist == 'ar':
         _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.Normal,
                                                         features=2,kernel_size=(3,3),
-                                                        latent_size=(C,H,W),num_layers=3)
+                                                        latent_size=(C,H,W),num_layers=1)
     else:
         _base_dist = survae.StandardNormal
     flow = survae.Flow(_base_dist,bijections,(C,H,W))
