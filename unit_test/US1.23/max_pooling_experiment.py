@@ -21,6 +21,7 @@ from survae.utils import *
 
 from flax import optim
 from survae.distributions import DiagonalNormal, StandardNormal2d, StandardHalfNormal, Distribution
+from flax.training import checkpoints
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=64)
@@ -54,7 +55,8 @@ parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--device', type=str, default='cuda')
 parser.add_argument('--parallel', type=str, default=None, choices={'dp'})
-parser.add_argument('--resume', type=str, default=None)
+parser.add_argument('--resume', action='store_true', default=False)
+parser.add_argument('--model_dir', type=str, default=None)
 
 # Logging params
 parser.add_argument('--name', type=str, default=None)
@@ -457,7 +459,11 @@ def train_max_pooling():
     params = pooling_model.init(key, rng, np.array(next(iter(train_loader)))[:2])
     optimizer_def = optim.Adam(learning_rate=args.lr)
     optimizer = optimizer_def.create(params)
-
+    
+    if args.resume:
+        print('resuming')
+        import ipdb;ipdb.set_trace()
+        optimizer = checkpoints.restore_checkpoint(args.model_dir + args.name, optimizer)
 
     @jax.jit
     def loss_fn(params, batch, rng):
@@ -487,11 +493,8 @@ def train_max_pooling():
             loss_val = eval_step(optimizer.target, np.array(x), rng)
             validation_loss.append(loss_val)
 
+        checkpoints.save_checkpoint(args.model_dir + args.name, optimizer, epoch, keep=3)
         print('epoch: %s, train_loss: %.3f, validation_loss: %.3f ' % (epoch, np.mean(train_loss), np.mean(validation_loss)))
 
 if __name__ == "__main__":
     train_max_pooling()
-    # python unit_test/US1.23/max_pooling_experiment.py --epochs 500 --batch_size 64 --optimizer adamax --lr 1e-4 
-    # --gamma 0.995 --eval_every 1 --check_every 10 --warmup 5000 --num_steps 12 --num_scales 2 --dequant flow 
-    # --pooling none --dataset cifar10 --augmentation eta --name nonpool
-

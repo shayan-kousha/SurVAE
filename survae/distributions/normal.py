@@ -62,14 +62,14 @@ class DiagonalNormal(Distribution):
     def log_prob(cls, x, params):
         loc = params["loc"].reshape((1, -1, 1, 1))
         log_scale = params["log_scale"].reshape((1, -1, 1, 1))
-        return sum_except_batch(norm.logpdf(x, loc, jnp.exp(log_scale)))
+        return sum_except_batch(norm.logpdf(x, loc, jnp.exp(jnp.tanh(log_scale))))
 
     @classmethod
     def sample(cls, rng, num_samples, params):
         loc = params["loc"].reshape((1, -1, 1, 1))
         log_scale = params["log_scale"].reshape((1, -1, 1, 1))
         shape = params["shape"]
-        return loc + jnp.exp(log_scale) * random.normal(rng, (num_samples,)+(shape))
+        return loc + jnp.exp(np.tanh(log_scale)) * random.normal(rng, (num_samples,)+(shape))
     
 class StandardHalfNormal(Distribution):
     """A standard half-Normal with zero mean and unit covariance."""
