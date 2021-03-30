@@ -23,6 +23,7 @@ from flax import optim
 from survae.distributions import DiagonalNormal, StandardNormal2d, StandardHalfNormal, Distribution
 from flax.training import checkpoints
 import ipdb
+import survae
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=100)
@@ -125,7 +126,30 @@ def get_data(args):
 class ConditionalTransform(Transform):
     """Base class for ConditionalTransform"""
     has_inverse = True
+
+class Transform(nn.Module):
     
+    hidden_layer: int
+    output_layer: int
+
+    @staticmethod
+    def _setup(hidden_layer, output_layer):
+        return partial(Transform, hidden_layer, output_layer)
+
+    @nn.compact
+    def __call__(self, x):
+        x = jnp.transpose(x,[0,2,3,1])
+        x = nn.Conv(self.hidden_layer,kernel_size=(3,3))(x)
+        # x, _ = survae.ActNorm(num_features=self.hidden_layer, axis=3)(rng,x)
+        x = nn.relu(x)
+        x = nn.Conv(self.hidden_layer,kernel_size=(1,1))(x)
+        # x, _ = survae.ActNorm(num_features=self.hidden_layer, axis=3)(rng,x)
+        x = nn.relu(x)
+        x = nn.Conv(self.output_layer,kernel_size=(3,3),
+                kernel_init=jax.nn.initializers.zeros,bias_init=jax.nn.initializers.zeros)(x)
+        shift, scale = np.split(x, 2, axis=-1)
+        return jnp.transpose(shift,[0,3,1,2]), jnp.transpose(scale,[0,3,1,2])
+
 class ConditionalCoupling(nn.Module, Bijective, ConditionalTransform):
     coupling_net: nn.Module = None
     context_net: nn.Module =None
@@ -136,22 +160,24 @@ class ConditionalCoupling(nn.Module, Bijective, ConditionalTransform):
     def _setup(in_channels, num_context, num_blocks, mid_channels, depth, growth, dropout, gated_conv, context_net=None, split_dim=1, num_condition=None):
         assert in_channels % 2 == 0
 
-        coupling_net = []
-        coupling_net.append(DenseNet._setup(in_channels=in_channels//2+num_context,
-                                     out_channels=in_channels,
-                                     num_blocks=num_blocks,
-                                     mid_channels=mid_channels,
-                                     depth=depth,
-                                     growth=growth,
-                                     dropout=dropout,
-                                     gated_conv=gated_conv,
-                                     zero_init=True))
-        coupling_net.append(ElementwiseParams2d._setup(2, mode='sequential'))
+        coupling_net = Transform._setup(mid_channels, in_channels)
+        # coupling_net = []
+        # coupling_net.append(DenseNet._setup(in_channels=in_channels//2,
+        #                              out_channels=in_channels,
+        #                              num_blocks=num_blocks,
+        #                              mid_channels=mid_channels,
+        #                              depth=depth,
+        #                              growth=growth,
+        #                              dropout=dropout,
+        #                              gated_conv=gated_conv,
+        #                              zero_init=True))
+        # coupling_net.append(ElementwiseParams2d._setup(2, mode='sequential'))
 
         return partial(ConditionalCoupling, coupling_net, context_net, split_dim, num_condition)
 
     def setup(self):
-        self._coupling_net = [coupling() for coupling in self.coupling_net]
+        # self._coupling_net = [coupling() for coupling in self.coupling_net]
+        self._coupling_net = self.coupling_net()
 
     def __call__(self, x, context):
         return self.forward(x, context)
@@ -185,9 +211,13 @@ class ConditionalCoupling(nn.Module, Bijective, ConditionalTransform):
         # ipdb.set_trace()
         if self.context_net: context = self.context_net(context)
         id, x2 = self.split_input(x)
-        elementwise_params = jnp.concatenate([id, context], axis=self.split_dim)
-        for coupling_layer in self._coupling_net:
-            elementwise_params = coupling_layer(elementwise_params)
+        
+
+        # elementwise_params = jnp.concatenate([id, context], axis=self.split_dim)
+        elementwise_params = id
+        # for coupling_layer in self._coupling_net:
+        #     elementwise_params = coupling_layer(elementwise_params)
+        elementwise_params = self._coupling_net(elementwise_params)
         z2, ldj = self._elementwise_forward(x2, elementwise_params)
         z = jnp.concatenate([id, z2], axis=self.split_dim)
         return z, ldj
@@ -195,9 +225,14 @@ class ConditionalCoupling(nn.Module, Bijective, ConditionalTransform):
     def inverse(self, z, context):
         if self.context_net: context = self.context_net(context)
         id, z2 = self.split_input(z)
-        elementwise_params = jnp.concatenate([id, context], axis=self.split_dim)
-        for coupling_layer in self._coupling_net:
-            elementwise_params = coupling_layer(elementwise_params)
+
+        context = jnp.zeros(context.shape)
+
+        # elementwise_params = jnp.concatenate([id, context], axis=self.split_dim)
+        elementwise_params = id
+        # for coupling_layer in self._coupling_net:
+        #     elementwise_params = coupling_layer(elementwise_params)
+        elementwise_params = self._coupling_net(elementwise_params)
         x2 = self._elementwise_inverse(z2, elementwise_params)
         x = jnp.concatenate([id, x2], axis=self.split_dim)
         return x
@@ -239,17 +274,23 @@ class DequantizationFlow(Flow):
         transforms = []
         sample_shape = (data_shape[0] * 4, data_shape[1] // 2, data_shape[2] // 2)
         for i in range(num_steps):
-            transforms.extend([
-                Conv1x1._setup(sample_shape[0]),
-                ConditionalCoupling._setup(in_channels=sample_shape[0],
-                                    num_context=num_context,
-                                    num_blocks=num_blocks,
-                                    mid_channels=mid_channels,
-                                    depth=depth,
-                                    growth=growth,
-                                    dropout=dropout,
-                                    gated_conv=gated_conv)
-            ])
+            transforms += [survae.ActNorm._setup(sample_shape[0]),
+                        Conv1x1._setup(sample_shape[0]),
+                        survae.AffineCoupling._setup(Transform._setup(mid_channels, sample_shape[0]),
+                                        _reverse_mask=i % 2 != 0, 
+                                        activation = lambda x: jnp.exp(jnp.tanh(x)))
+                    ]
+            # transforms.extend([
+            #     Conv1x1._setup(sample_shape[0]),
+            #     ConditionalCoupling._setup(in_channels=sample_shape[0],
+            #                         num_context=num_context,
+            #                         num_blocks=num_blocks,
+            #                         mid_channels=mid_channels,
+            #                         depth=depth,
+            #                         growth=growth,
+            #                         dropout=dropout,
+            #                         gated_conv=gated_conv)
+            # ])
 
         # # Final shuffle of channels, squeeze and sigmoid
         transforms.extend([Conv1x1._setup(sample_shape[0]),
@@ -279,13 +320,13 @@ class DequantizationFlow(Flow):
             "log_scale": self.log_scale_dequantization,
             "shape": self.sample_shape,
         }
-
-        if self._context_init:
-            for context_layer in self._context_init:
-                if 'strides' in context_layer.__dict__.keys():
-                    context = jnp.transpose(context_layer(jnp.transpose(context, (0, 2, 3, 1))), (0, 3, 1, 2))
-                else:
-                    context = context_layer(context)
+        # ipdb.set_trace()
+        # if self._context_init:
+        #     for context_layer in self._context_init:
+        #         if 'strides' in context_layer.__dict__.keys():
+        #             context = jnp.transpose(context_layer(jnp.transpose(context, (0, 2, 3, 1))), (0, 3, 1, 2))
+        #         else:
+        #             context = context_layer(context)
         # if isinstance(self.base_dist, ConditionalDistribution):
         #     z, log_prob = self.base_dist.sample_with_log_prob(context)
         # else:
@@ -294,10 +335,11 @@ class DequantizationFlow(Flow):
         _ldj = jnp.zeros(context.shape[0])
         _ldj_sigmoid = jnp.zeros(context.shape[0])
         for transform in self._transforms:
-            if isinstance(transform, ConditionalTransform):
-                z, ldj = transform(z, context)
-            else:
-                z, ldj = transform(rng, z)
+            # if isinstance(transform, ConditionalTransform):
+            #     z, ldj = transform(z, context)
+            # else:
+            #     z, ldj = transform(rng, z)
+            z, ldj = transform(rng, z)
             log_prob -= ldj
             _ldj -= ldj
             if transform.__class__.__name__ == "Sigmoid":
@@ -534,6 +576,7 @@ def train_max_pooling():
         val_qu_sigmoid = []
         train_bar = tqdm(train_loader)
         for x in train_bar:
+            rng, key = random.split(rng)
             lr = min(1,i/args.warmup) * args.lr
             optimizer, loss_val, aux = train_step(optimizer, np.array(x), rng, lr)
             train_loss.append(loss_val)
@@ -549,6 +592,7 @@ def train_max_pooling():
             i += 1
         eval_bar = tqdm(eval_loader)
         for x in eval_bar:
+            rng, key = random.split(rng)
             loss_val, aux = loss_fn(optimizer.target, np.array(x), rng)
             val_loss.append(loss_val)
             val_qu.append(aux[0])
