@@ -147,7 +147,7 @@ class PoolFlowExperiment(Flow):
         }
         x = self.base_dist.sample(rng, num_samples, params=params)
         for layer in reversed(self._transforms):
-            x = layer.inverse(x, rng)
+            x = layer.inverse(rng, x)
 
         return x
 

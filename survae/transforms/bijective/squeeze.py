@@ -55,6 +55,6 @@ class Squeeze2d(nn.Module, Bijective):
         ldj = jnp.zeros(x.shape[0], dtype=x.dtype)
         return z, ldj
 
-    def inverse(self, z):
+    def inverse(self, rng, z):
         x = self._unsqueeze(z)
         return x

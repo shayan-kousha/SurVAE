@@ -42,7 +42,7 @@ class ScalarAffineBijection(nn.Module, Bijective):
         ldj = np.full((batch_size), self._log_scale * num_dims, dtype=x.dtype)
         return z, ldj
 
-    def inverse(self, z):
+    def inverse(self, rng, z):
         batch_size = z.shape[0]
         num_dims = np.prod(z.shape[1:])
         x = (z - self._shift) / self._scale

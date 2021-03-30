@@ -69,7 +69,7 @@ class DiagonalNormal(Distribution):
         loc = params["loc"].reshape((1, -1, 1, 1))
         log_scale = params["log_scale"].reshape((1, -1, 1, 1))
         shape = params["shape"]
-        return loc + jnp.exp(np.tanh(log_scale)) * random.normal(rng, (num_samples,)+(shape))
+        return loc + jnp.exp(jnp.tanh(log_scale)) * random.normal(rng, (num_samples,)+(shape))
     
 class StandardHalfNormal(Distribution):
     """A standard half-Normal with zero mean and unit covariance."""

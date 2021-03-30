@@ -110,7 +110,7 @@ class SimpleMaxPoolSurjection2d(nn.Module, Surjective):
         ldj = self.decoder.log_prob(xd, params=None) + ldj_k
         return z, ldj
 
-    def inverse(self, z, rng=None):
+    def inverse(self, rng, z):
         k = random.randint(rng, z.shape, 0, 4)
         xd = self.decoder.sample(rng, z.shape[0], params=jnp.zeros(self.latent_shape))
         x = self._construct_x(z, xd, k)

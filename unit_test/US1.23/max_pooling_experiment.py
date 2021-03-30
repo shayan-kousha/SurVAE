@@ -1,5 +1,6 @@
 import argparse
 import sys
+import os
 sys.path.append(".")
 from torch.utils.data import DataLoader
 from survae.data.loaders import MNIST, CIFAR10, disp_imdata, logistic
@@ -18,6 +19,7 @@ from jax import random
 import jax.numpy as jnp
 import numpy as np
 from survae.utils import *
+import matplotlib.pyplot as plt
 
 from flax import optim
 from survae.distributions import DiagonalNormal, StandardNormal2d, StandardHalfNormal, Distribution
@@ -358,15 +360,16 @@ class Coupling(nn.Module, Bijective):
         z = jnp.concatenate([id, z2], axis=self.split_dim)
         return z, ldj
 
-    def inverse(self, z):
+    def inverse(self, rng, z):
         # with torch.no_grad():
-        elementwise_params, z2 = self.split_input(z)
+        id, z2 = self.split_input(z)
+        elementwise_params = id
         for coupling_layer in self._coupling_net:
             elementwise_params = coupling_layer(elementwise_params)
         x2 = self._elementwise_inverse(z2, elementwise_params)
         x = jnp.concatenate([id, x2], axis=self.split_dim)
         return x
-    
+
 def get_model(data_shape, num_bits, num_scales, num_steps, actnorm, pooling,
                  dequant, dequant_steps, dequant_context,
                  densenet_blocks, densenet_channels, densenet_depth,
@@ -462,7 +465,6 @@ def train_max_pooling():
     
     if args.resume:
         print('resuming')
-        import ipdb;ipdb.set_trace()
         optimizer = checkpoints.restore_checkpoint(args.model_dir + args.name, optimizer)
 
     @jax.jit
@@ -480,6 +482,18 @@ def train_max_pooling():
     def eval_step(params, batch, rng):
         return -jnp.sum(pooling_model.apply(params, rng, batch, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
 
+    # @jax.jit
+    def sample(params, rng, num_samples, epoch, exp_name):
+        samples = pooling_model.apply(params, rng, num_samples, method=pooling_model.sample)
+        samples = jnp.transpose(samples, (0, 2, 3, 1)).astype(int)
+        disp_imdata(samples, samples.shape[1:], [5, 5])
+
+        if not os.path.exists('./samples/{}'.format(exp_name)):
+            os.mkdir('./samples/{}'.format(exp_name))
+
+        plt.savefig('./samples/{}/{}.png'.format(exp_name, epoch))
+        return samples
+
     # training loop
     for epoch in range(args.epochs):
         # Train
@@ -492,6 +506,8 @@ def train_max_pooling():
         for x in eval_loader:
             loss_val = eval_step(optimizer.target, np.array(x), rng)
             validation_loss.append(loss_val)
+
+        sample(optimizer.target, rng, 25, epoch, args.name)
 
         checkpoints.save_checkpoint(args.model_dir + args.name, optimizer, epoch, keep=3)
         print('epoch: %s, train_loss: %.3f, validation_loss: %.3f ' % (epoch, np.mean(train_loss), np.mean(validation_loss)))
