@@ -12,19 +12,19 @@ from typing import Any, Optional, List, Union, Tuple
 from survae.transforms import UniformDequantization, SimpleMaxPoolSurjection2d, Slice, Transform, Conv1x1, Squeeze2d, Unsqueeze2d, Sigmoid, VariationalDequantization, ScalarAffineBijection
 from flax import linen as nn
 from functools import partial
-from survae.transforms.bijective import Bijective
+from survae.transforms.bijective import Bijective, ActNorm
 import jax
 from jax import random
 import jax.numpy as jnp
 import numpy as np
 from survae.utils import *
-
+from tqdm import tqdm
 from flax import optim
 from survae.distributions import DiagonalNormal, StandardNormal2d, StandardHalfNormal, Distribution
 from flax.training import checkpoints
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--batch_size', type=int, default=64)
+parser.add_argument('--batch_size', type=int, default=100)
 parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--pin_memory', type=eval, default=False)
 parser.add_argument('--augmentation', type=str, default=None)
@@ -107,14 +107,16 @@ def get_data(args):
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
-        pin_memory=args.pin_memory
+        pin_memory=args.pin_memory,
+        drop_last=True
     )
     eval_loader = DataLoader(
         dataset.test,
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
-        pin_memory=args.pin_memory
+        pin_memory=args.pin_memory,
+        drop_last=True
     )
 
     return train_loader, eval_loader, data_shape
@@ -212,44 +214,46 @@ class DequantizationFlow(Flow):
     def _setup(data_shape, num_bits, num_steps, num_context,
                  num_blocks, mid_channels, depth, growth, dropout, gated_conv):
 
-        context_net = []
-        context_net.append(LambdaLayer._setup(lambda x: 2*x.astype(jnp.float32)/(2**num_bits-1)-1))
-        context_net.append(DenseBlock._setup(in_channels=data_shape[0],
-                                               out_channels=mid_channels,
-                                               depth=4,
-                                               growth=16,
-                                               dropout=dropout,
-                                               gated_conv=gated_conv,
-                                               zero_init=False))
-        context_net.append(partial(nn.Conv, mid_channels, kernel_size=(2, 2), strides=(2, 2), padding='valid'))
-        context_net.append(DenseBlock._setup(in_channels=mid_channels,
-                                               out_channels=num_context,
-                                               depth=4,
-                                               growth=16,
-                                               dropout=dropout,
-                                               gated_conv=gated_conv,
-                                               zero_init=False))
+        # context_net = []
+        # context_net.append(LambdaLayer._setup(lambda x: 2*x.astype(jnp.float32)/(2**num_bits-1)-1))
+        # context_net.append(DenseBlock._setup(in_channels=data_shape[0],
+        #                                        out_channels=mid_channels,
+        #                                        depth=4,
+        #                                        growth=16,
+        #                                        dropout=dropout,
+        #                                        gated_conv=gated_conv,
+        #                                        zero_init=False))
+        # context_net.append(partial(nn.Conv, mid_channels, kernel_size=(2, 2), strides=(2, 2), padding='valid'))
+        # context_net.append(DenseBlock._setup(in_channels=mid_channels,
+        #                                        out_channels=num_context,
+        #                                        depth=4,
+        #                                        growth=16,
+        #                                        dropout=dropout,
+        #                                        gated_conv=gated_conv,
+        #                                        zero_init=False))
+        context_net = None
 
-        transforms = []
+        transforms = [Unsqueeze2d._setup(),Sigmoid._setup()]
+        # transforms = []
         sample_shape = (data_shape[0] * 4, data_shape[1] // 2, data_shape[2] // 2)
-        for i in range(num_steps):
-            transforms.extend([
-                Conv1x1._setup(sample_shape[0]),
-                ConditionalCoupling._setup(in_channels=sample_shape[0],
-                                    num_context=num_context,
-                                    num_blocks=num_blocks,
-                                    mid_channels=mid_channels,
-                                    depth=depth,
-                                    growth=growth,
-                                    dropout=dropout,
-                                    gated_conv=gated_conv)
-            ])
+        # for i in range(num_steps):
+        #     transforms.extend([
+        #         Conv1x1._setup(sample_shape[0]),
+        #         ConditionalCoupling._setup(in_channels=sample_shape[0],
+        #                             num_context=num_context,
+        #                             num_blocks=num_blocks,
+        #                             mid_channels=mid_channels,
+        #                             depth=depth,
+        #                             growth=growth,
+        #                             dropout=dropout,
+        #                             gated_conv=gated_conv)
+        #     ])
 
-        # Final shuffle of channels, squeeze and sigmoid
-        transforms.extend([Conv1x1._setup(sample_shape[0]),
-                           Unsqueeze2d._setup(),
-                           Sigmoid._setup()
-                          ])
+        # # Final shuffle of channels, squeeze and sigmoid
+        # transforms.extend([Conv1x1._setup(sample_shape[0]),
+        #                    Unsqueeze2d._setup(),
+        #                    Sigmoid._setup()
+        #                   ])
         
         return partial(DequantizationFlow, sample_shape=sample_shape, base_dist=DiagonalNormal, transforms=transforms, latent_size=None, context_init=context_net)
 
@@ -260,8 +264,9 @@ class DequantizationFlow(Flow):
             self._transforms = [transform() for transform in self.transforms]
         else:
             self._transforms = []
-
-        self._context_init = [context() for context in self.context_init]
+        
+        # self._context_init = [context() for context in self.context_init]
+        self._context_init = None
 
         self.loc_dequantization = self.param('loc_dequantization', jax.nn.initializers.zeros, self.sample_shape[0])
         self.log_scale_dequantization = self.param('log_scale_dequantization', jax.nn.initializers.zeros, self.sample_shape[0])
@@ -283,13 +288,19 @@ class DequantizationFlow(Flow):
         #     z, log_prob = self.base_dist.sample_with_log_prob(context)
         # else:
         z, log_prob = self.base_dist.sample_with_log_prob(rng, context.shape[0], params)
+        base_dist = log_prob
+        _ldj = jnp.zeros(context.shape[0])
+        _ldj_sigmoid = jnp.zeros(context.shape[0])
         for transform in self._transforms:
             if isinstance(transform, ConditionalTransform):
                 z, ldj = transform(z, context)
             else:
                 z, ldj = transform(rng, z)
             log_prob -= ldj
-        return z, log_prob
+            _ldj -= ldj
+            if transform.__class__.__name__ == "Sigmoid":
+                _ldj_sigmoid -= ldj
+        return z, log_prob, base_dist, _ldj, _ldj_sigmoid
 
 class Coupling(nn.Module, Bijective):
     coupling_net: Union[List[nn.Module],None]
@@ -403,7 +414,7 @@ def get_model(data_shape, num_bits, num_scales, num_steps, actnorm, pooling,
         # Pooling flows
         for scale in range(num_scales):
             for step in range(num_steps):
-                if actnorm: transforms.append(ActNormBijection2d(current_shape[0]))
+                if actnorm: transforms.append(ActNorm._setup(current_shape[0]))
                 transforms.extend([
                     Conv1x1._setup(current_shape[0]),
                     Coupling._setup(in_channels=current_shape[0],
@@ -428,9 +439,25 @@ def get_model(data_shape, num_bits, num_scales, num_steps, actnorm, pooling,
                                  current_shape[1] // 2,
                                  current_shape[2] // 2)
             else:
-                if actnorm: transforms.append(ActNormBijection2d(current_shape[0]))
+                if actnorm: transforms.append(ActNorm._setup(current_shape[0]))
 
         return current_shape, transforms
+
+
+def params_count(params):
+    _params = []
+    def flatten(_params, frozen_dict):
+        for k in frozen_dict:
+            if type(frozen_dict[k]) == type(frozen_dict):
+                flatten(_params, frozen_dict[k])
+            else:
+                _params.append(frozen_dict[k])
+    flatten(_params,params)
+    m = 0
+    for p in _params:
+        if type(p) != type(None):
+            m += np.array(p.shape).prod()
+    return m
 
 def train_max_pooling():
     # get data
@@ -456,45 +483,93 @@ def train_max_pooling():
     rng = random.PRNGKey(0)
     rng, key = random.split(rng)
     pooling_model = PoolFlowExperiment(current_shape=current_shape, base_dist=DiagonalNormal, transforms=transformations, latent_size=None)
-    params = pooling_model.init(key, rng, np.array(next(iter(train_loader)))[:2])
+    init_data = np.array(next(iter(train_loader)))
+    print("Initializing with data size", init_data.shape)
+    params = pooling_model.init(key, rng, init_data)
+    print("Number of parameters - ",params_count(params))
     optimizer_def = optim.Adam(learning_rate=args.lr)
     optimizer = optimizer_def.create(params)
     
     if args.resume:
         print('resuming')
         import ipdb;ipdb.set_trace()
-        optimizer = checkpoints.restore_checkpoint(args.model_dir + args.name, optimizer)
+        optimizer = checkpoints.restore_checkpoint(args.model_dir, optimizer)
 
     @jax.jit
     def loss_fn(params, batch, rng):
-        return -jnp.sum(pooling_model.apply(params, rng, batch, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
+        loss = pooling_model.apply(params, rng, batch, method=pooling_model.log_prob)
+        scale = math.log(2) *  np.prod(batch.shape)
+        aux = (-jnp.sum(loss[1])/scale,
+                -jnp.sum(loss[2])/scale,
+                -jnp.sum(loss[3])/scale,
+                -jnp.sum(loss[4])/scale)
+        return -jnp.sum(loss[0]) / scale, aux
 
     @jax.jit
-    def train_step(optimizer, batch, rng):
-        grad_fn = jax.value_and_grad(loss_fn)
-        loss_val, grad = grad_fn(optimizer.target, batch, rng)
-        optimizer = optimizer.apply_gradient(grad)
-        return optimizer, loss_val
+    def train_step(optimizer, batch, rng, lr):
+        grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+        (loss_val, aux), grad = grad_fn(optimizer.target, batch, rng)
+        optimizer = optimizer.apply_gradient(grad,learning_rate=lr)
+        return optimizer, loss_val, aux
 
-    @jax.jit
-    def eval_step(params, batch, rng):
-        return -jnp.sum(pooling_model.apply(params, rng, batch, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
+    # @jax.jit
+    # def eval_step(params, batch, rng):
+    #     return -jnp.sum(pooling_model.apply(params, rng, batch, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
 
     # training loop
+    i = 1 + optimizer.state_dict()['state']['step']
     for epoch in range(args.epochs):
         # Train
         train_loss = []
-        validation_loss = []
-        for x in train_loader:
-            optimizer, loss_val = train_step(optimizer, np.array(x), rng)
+        train_qu = []
+        train_qu_base_dist = []
+        train_qu_ldj = []
+        train_qu_sigmoid = []
+        val_loss = []
+        val_qu = []
+        val_qu_base_dist = []
+        val_qu_ldj = []
+        val_qu_sigmoid = []
+        train_bar = tqdm(train_loader)
+        for x in train_bar:
+            lr = min(1,i/args.warmup) * args.lr
+            optimizer, loss_val, aux = train_step(optimizer, np.array(x), rng, lr)
             train_loss.append(loss_val)
-        
-        for x in eval_loader:
-            loss_val = eval_step(optimizer.target, np.array(x), rng)
-            validation_loss.append(loss_val)
+            train_qu.append(aux[0])
+            train_qu_base_dist.append(aux[1])
+            train_qu_ldj.append(aux[2])
+            train_qu_sigmoid.append(aux[3])  
+            train_bar.set_description('epoch: %s, train loss: %.3f, qu: %.3f, qu_basedist: %.3f, qu_-ldj: %.3f, qu_-ldjsig: %.3f'
+                % (epoch, np.mean(train_loss), np.mean(train_qu), 
+                np.mean(train_qu_base_dist), np.mean(train_qu_ldj),
+                np.mean(train_qu_sigmoid))
+            )
+            i += 1
+        eval_bar = tqdm(eval_loader)
+        for x in eval_bar:
+            loss_val, aux = loss_fn(optimizer.target, np.array(x), rng)
+            val_loss.append(loss_val)
+            val_qu.append(aux[0])
+            val_qu_base_dist.append(aux[1])
+            val_qu_ldj.append(aux[2])
+            val_qu_sigmoid.append(aux[3]) 
+            eval_bar.set_description('epoch: %s, val loss: %.3f, qu: %.3f, qu_basedist: %.3f, qu_-ldj: %.3f, qu_-ldjsig: %.3f'
+                % (epoch, np.mean(val_loss), np.mean(val_qu), 
+                np.mean(val_qu_base_dist), np.mean(val_qu_ldj),
+                np.mean(val_qu_sigmoid))
+            )
 
-        checkpoints.save_checkpoint(args.model_dir + args.name, optimizer, epoch, keep=3)
-        print('epoch: %s, train_loss: %.3f, validation_loss: %.3f ' % (epoch, np.mean(train_loss), np.mean(validation_loss)))
+        # print('epoch: %s, validation_loss: %.3f, qu: %.3f, qu_basedist: %.3f, qu_-ldj: %.3f, qu_-ldjsig: %.3f ' 
+        # % (epoch, np.mean(val_loss), np.mean(val_qu),
+        #     np.mean(val_qu_base_dist), np.mean(val_qu_ldj),
+        #     np.mean(val_qu_sigmoid))     
+        # )
+        if args.model_dir != None:
+            try:
+                os.mkdir(args.model_dir)
+            except:
+                pass
+            checkpoints.save_checkpoint(args.model_dir, optimizer, epoch, keep=3)
 
 if __name__ == "__main__":
     train_max_pooling()

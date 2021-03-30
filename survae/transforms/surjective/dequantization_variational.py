@@ -34,10 +34,10 @@ class VariationalDequantization(nn.Module,Surjective):
     def forward(self, rng, x):
         if self._dtype == None:
             self._dtype = x.dtype
-        u, qu = self._encoder.sample_with_log_prob(rng=rng, context=x)
+        u, qu, qu_base_dist, qu_ldj, qu_ldj_sigmoid = self._encoder.sample_with_log_prob(rng=rng, context=x)
         z = (x.astype(u.dtype) + u) / (2**self.num_bits)
         ldj = self._ldj(z.shape) - qu
-        return z, ldj
+        return z, ldj, -qu ,-qu_base_dist, -qu_ldj, -qu_ldj_sigmoid
     
     def _ldj(self, shape):
         batch_size = shape[0]

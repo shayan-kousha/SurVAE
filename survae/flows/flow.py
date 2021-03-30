@@ -6,6 +6,8 @@ from survae.transforms import *
 from jax import numpy as jnp, random
 from functools import partial
 from survae.utils import *
+import ipdb
+
 
 class Flow(nn.Module, Distribution):
     base_dist: Distribution = None
@@ -31,7 +33,7 @@ class Flow(nn.Module, Distribution):
     def log_prob(self, rng, x, params=None):
         log_prob = jnp.zeros(x.shape[0])
         for transform in self._transforms:
-            x, ldj = transform(rng, x)
+            x, ldj = transform(rng=rng, x=x)
             log_prob += ldj
         log_prob += self.base_dist.log_prob(x, params=params)
         return log_prob
@@ -127,7 +129,12 @@ class PoolFlowExperiment(Flow):
     def log_prob(self, rng, x, params=None):
         log_det_J, z =  jnp.zeros(x.shape[0]), x
         for layer in self._transforms:
-            z, log_det_J_layer = layer(rng, z)
+            # print(layer.__class__.__name__)
+
+            if layer.__class__.__name__ == "VariationalDequantization":
+                z, log_det_J_layer, neg_qu, neg_qu_base_dist, neg_qu_ldj, neg_qu_sigmoid = layer(rng, z)
+            else:
+                z, log_det_J_layer = layer(rng, z)
             # import ipdb;ipdb.set_trace()
             
             log_det_J += log_det_J_layer
@@ -137,7 +144,7 @@ class PoolFlowExperiment(Flow):
             "log_scale": self.log_scale,
             "shape": self.current_shape,
         }
-        return self.base_dist.log_prob(z, params=params) + log_det_J
+        return self.base_dist.log_prob(z, params=params) + log_det_J, neg_qu, neg_qu_base_dist, neg_qu_ldj, neg_qu_sigmoid
         
     def sample(self, rng, num_samples): 
         params = {
