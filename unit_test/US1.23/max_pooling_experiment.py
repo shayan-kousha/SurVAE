@@ -22,6 +22,7 @@ from tqdm import tqdm
 from flax import optim
 from survae.distributions import DiagonalNormal, StandardNormal2d, StandardHalfNormal, Distribution
 from flax.training import checkpoints
+import ipdb
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=100)
@@ -181,6 +182,7 @@ class ConditionalCoupling(nn.Module, Bijective, ConditionalTransform):
             return jnp.split(input, 2, axis=self.split_dim)
 
     def forward(self, x, context):
+        # ipdb.set_trace()
         if self.context_net: context = self.context_net(context)
         id, x2 = self.split_input(x)
         elementwise_params = jnp.concatenate([id, context], axis=self.split_dim)
@@ -214,46 +216,46 @@ class DequantizationFlow(Flow):
     def _setup(data_shape, num_bits, num_steps, num_context,
                  num_blocks, mid_channels, depth, growth, dropout, gated_conv):
 
-        # context_net = []
-        # context_net.append(LambdaLayer._setup(lambda x: 2*x.astype(jnp.float32)/(2**num_bits-1)-1))
-        # context_net.append(DenseBlock._setup(in_channels=data_shape[0],
-        #                                        out_channels=mid_channels,
-        #                                        depth=4,
-        #                                        growth=16,
-        #                                        dropout=dropout,
-        #                                        gated_conv=gated_conv,
-        #                                        zero_init=False))
-        # context_net.append(partial(nn.Conv, mid_channels, kernel_size=(2, 2), strides=(2, 2), padding='valid'))
-        # context_net.append(DenseBlock._setup(in_channels=mid_channels,
-        #                                        out_channels=num_context,
-        #                                        depth=4,
-        #                                        growth=16,
-        #                                        dropout=dropout,
-        #                                        gated_conv=gated_conv,
-        #                                        zero_init=False))
-        context_net = None
+        context_net = []
+        context_net.append(LambdaLayer._setup(lambda x: 2*x.astype(jnp.float32)/(2**num_bits-1)-1))
+        context_net.append(DenseBlock._setup(in_channels=data_shape[0],
+                                               out_channels=mid_channels,
+                                               depth=4,
+                                               growth=16,
+                                               dropout=dropout,
+                                               gated_conv=gated_conv,
+                                               zero_init=False))
+        context_net.append(partial(nn.Conv, mid_channels, kernel_size=(2, 2), strides=(2, 2), padding='valid'))
+        context_net.append(DenseBlock._setup(in_channels=mid_channels,
+                                               out_channels=num_context,
+                                               depth=4,
+                                               growth=16,
+                                               dropout=dropout,
+                                               gated_conv=gated_conv,
+                                               zero_init=False))
+        # context_net = None
 
-        transforms = [Unsqueeze2d._setup(),Sigmoid._setup()]
-        # transforms = []
+        # transforms = [Unsqueeze2d._setup(),Sigmoid._setup()]
+        transforms = []
         sample_shape = (data_shape[0] * 4, data_shape[1] // 2, data_shape[2] // 2)
-        # for i in range(num_steps):
-        #     transforms.extend([
-        #         Conv1x1._setup(sample_shape[0]),
-        #         ConditionalCoupling._setup(in_channels=sample_shape[0],
-        #                             num_context=num_context,
-        #                             num_blocks=num_blocks,
-        #                             mid_channels=mid_channels,
-        #                             depth=depth,
-        #                             growth=growth,
-        #                             dropout=dropout,
-        #                             gated_conv=gated_conv)
-        #     ])
+        for i in range(num_steps):
+            transforms.extend([
+                Conv1x1._setup(sample_shape[0]),
+                ConditionalCoupling._setup(in_channels=sample_shape[0],
+                                    num_context=num_context,
+                                    num_blocks=num_blocks,
+                                    mid_channels=mid_channels,
+                                    depth=depth,
+                                    growth=growth,
+                                    dropout=dropout,
+                                    gated_conv=gated_conv)
+            ])
 
         # # Final shuffle of channels, squeeze and sigmoid
-        # transforms.extend([Conv1x1._setup(sample_shape[0]),
-        #                    Unsqueeze2d._setup(),
-        #                    Sigmoid._setup()
-        #                   ])
+        transforms.extend([Conv1x1._setup(sample_shape[0]),
+                           Unsqueeze2d._setup(),
+                           Sigmoid._setup()
+                          ])
         
         return partial(DequantizationFlow, sample_shape=sample_shape, base_dist=DiagonalNormal, transforms=transforms, latent_size=None, context_init=context_net)
 
@@ -265,8 +267,8 @@ class DequantizationFlow(Flow):
         else:
             self._transforms = []
         
-        # self._context_init = [context() for context in self.context_init]
-        self._context_init = None
+        self._context_init = [context() for context in self.context_init]
+        # self._context_init = None
 
         self.loc_dequantization = self.param('loc_dequantization', jax.nn.initializers.zeros, self.sample_shape[0])
         self.log_scale_dequantization = self.param('log_scale_dequantization', jax.nn.initializers.zeros, self.sample_shape[0])
