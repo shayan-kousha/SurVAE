@@ -16,6 +16,7 @@ class StandardNormal(nn.Module, Distribution):
     @classmethod
     def sample(cls, rng, num_samples, params):
         shape = params.shape[-1]
+        rng, _ = random.split(rng)
         return random.normal(rng, (num_samples,)+(shape,))
 
 class MeanNormal(nn.Module, Distribution):

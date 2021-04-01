@@ -23,5 +23,6 @@ class Bernoulli(nn.Module, Distribution):
             params = jnp.zeros(1)
         p = nn.tanh(params*0.5) * (0.5-1e-4) + 0.5
         shape = p.shape[-1]
+        rng, _ = random.split(rng)
         return random.bernoulli(rng, p, (num_samples,)+(shape,))
         # return p >= 0.5

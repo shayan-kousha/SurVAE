@@ -5,6 +5,7 @@ from survae.transforms.bijective import Bijective
 from flax import linen as nn
 import jax.numpy as jnp
 from typing import Callable
+import jax
 
 class AffineCoupling(nn.Module, Bijective):
     shift_and_log_scale_fn: Callable
@@ -31,6 +32,7 @@ class AffineCoupling(nn.Module, Bijective):
 
         translation, log_scale = self.shift_and_log_scale(x0)
         x1 *= jnp.exp(log_scale)
+        # x1 *= jax.nn.softplus(log_scale)
         x1 += translation
 
         if self._reverse_mask:
@@ -52,6 +54,7 @@ class AffineCoupling(nn.Module, Bijective):
 
         translation, log_scale = self.shift_and_log_scale(z0)
         z1 -= translation
+        # z1 *= jax.nn.softplus(-log_scale)
         z1 *= jnp.exp(-log_scale)
 
         if self._reverse_mask:

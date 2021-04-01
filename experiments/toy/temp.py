@@ -3,7 +3,7 @@ sys.path.append(".")
 
 import argparse
 from survae.flows import *
-from survae.transforms import Abs, Scale, Permute
+from survae.transforms import Abs, Scale, Permute, ElementAbs
 from survae.nn.nets import MLP
 import survae
 from survae.data.datasets.toy import *
@@ -73,10 +73,33 @@ elif args.dataset == 'eightgaussians':
 # data = EightGaussiansDataset(num_points=1000).get_data()
 
 # Define Transforms
-transforms = [Abs._setup(Bernoulli)]
+def init(key, shape, dtype=np.float32):
+    return random.uniform(key, shape, dtype, minval=-np.sqrt(1/shape[0]), maxval=np.sqrt(1/shape[0])) 
 
-scale = jnp.array([[1/4, 1/4]])
-transforms += [Scale._setup(scale), Logit._setup(eps=1e-6, temperature=1)]
+class Classifier(nn.Module):
+    kernel_init: Callable
+    bias_init: Callable
+    hidden_layer: int
+    output_layer: int
+
+    @staticmethod
+    def _setup(hidden_layer, output_layer, kernel_init=init, bias_init=init):
+        return partial(Classifier, kernel_init, bias_init, hidden_layer, output_layer)
+
+    @nn.compact
+    def __call__(self, x):
+        x = nn.Dense(features=self.hidden_layer[0], kernel_init=init, bias_init=init)(x)
+        x = nn.relu(x)
+        x = nn.Dense(features=self.hidden_layer[1], kernel_init=init, bias_init=init)(x)
+        x = nn.relu(x)
+        x = nn.Dense(features=self.output_layer, kernel_init=init, bias_init=init)(x)
+        return x
+
+classifier = Classifier._setup([200, 100] , 1)
+element_abs = ElementAbs._setup(Bernoulli, classifier, 1)
+
+transforms = [element_abs]
+transforms += [Shift._setup(jnp.array([0.0, 4.0])), Scale._setup(jnp.array([1/4, 1/8]))]
 
 D = 2 # Number of data dimensions
 P = 2 if args.affine else 1 # Number of elementwise parameters
@@ -105,10 +128,10 @@ class Transform(nn.Module):
 
         return x, nn.tanh(log_scale)
 
-permutation = jnp.arange(1, -1 , -1)
-for layer in range(args.num_flows):
-	net = AffineCoupling._setup(Transform._setup(StandardNormal, args.hidden_units , train_data[0].shape[0]), _reverse_mask=layer % 2 != 0)
-	transforms.append(net)
+# permutation = jnp.arange(1, -1 , -1)
+# for layer in range(args.num_flows):
+# 	net = AffineCoupling._setup(Transform._setup(StandardNormal, args.hidden_units , train_data[0].shape[0]), _reverse_mask=layer % 2 != 0)
+# 	transforms.append(net)
 #     transforms.append(Permute._setup(permutation, 1))
 # transforms.pop()
 

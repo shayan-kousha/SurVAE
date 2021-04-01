@@ -37,6 +37,7 @@ class Abs(nn.Module, Surjective):
 		numel = 1
 		for nml in z.shape:
 			numel *= nml
+		rng, _ = random.split(rng)
 		ber = 2 * self.base_dist.sample(rng, numel) - 1
 		ber = ber.reshape(z.shape)
 		# ber = ber[:, 0]
