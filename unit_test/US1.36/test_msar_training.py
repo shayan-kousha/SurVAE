@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax
 from jax import random
 from jax.config import config
-config.update("jax_debug_nans", True)
+# config.update("jax_debug_nans", True)
 from flax import linen as nn
 from flax import optim
 import os
@@ -92,6 +92,11 @@ flags.DEFINE_integer(
     help=('seed')
 )
 
+flags.DEFINE_string(
+    'activation', default='exp_tanh',
+    help=('activation for the scale term of affine coupling')
+)
+
 class Transform(nn.Module):
     
     hidden_layer: int
@@ -115,11 +120,23 @@ class Transform(nn.Module):
         shift, scale = np.split(x, 2, axis=-1)
         return jnp.transpose(shift,[0,3,1,2]), jnp.transpose(scale,[0,3,1,2])
 
-# Best 32 3 32 32 96 3 LSTM = 1
+
 def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
     bijections = [survae.UniformDequantization._setup(),survae.Shift._setup(-0.5)]
     _H = H
     # layer = int(np.log2(_H))
+    if FLAGS.activation == "exp":
+        activation = jnp.exp
+    elif FLAGS.activation == "sigmoid":
+        activation = lambda x: jax.nn.sigmoid(x+2.0)
+    elif FLAGS.activation == "exp_tanh":
+        activation = lambda x: jnp.exp(jnp.tanh(x))
+    elif FLAGS.activation == "softplus":
+        activation = jax.nn.sigmoid
+    else:
+        raise
+    
+    kernel_sizes = [5,5,3,3,3]
     for i in range(layer):
         bijections += [survae.Squeeze2d._setup(2)]
         C *= 2**2
@@ -129,21 +146,25 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
             bijections += [survae.ActNorm._setup(C), survae.Conv1x1._setup(C,True),
                         survae.AffineCoupling._setup(Transform._setup(hidden, C),
                                         _reverse_mask=j % 2 != 0, 
-                                        activation = lambda x: jnp.exp(jnp.tanh(x)))]
+                                        activation = activation)]
         if i < layer - 1 and FLAGS.ms:
             C //= 2
             if FLAGS.base_dist == 'ar':
                 _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.Normal,
-                                                                features=2,kernel_size=(3,3),
-                                                                latent_size=(C,H,W),num_layers=1)
+                                                                features=2,
+                                                                kernel_size=(kernel_sizes[i],kernel_sizes[i]),
+                                                                latent_size=(C,H,W),
+                                                                num_layers=3)
             else:
                 # _base_dist = survae.ConditionalNormal._setup(features=C,kernel_size=(3,3))
                 _base_dist = survae.StandardNormal
             bijections += [survae.Split._setup(survae.Flow._setup(_base_dist,[],(C,H,W)),C, dim=1)]
     if FLAGS.base_dist == 'ar':
         _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.Normal,
-                                                        features=2,kernel_size=(3,3),
-                                                        latent_size=(C,H,W),num_layers=1)
+                                                        features=2,
+                                                        kernel_size=(kernel_sizes[i],kernel_sizes[i]),
+                                                        latent_size=(C,H,W),
+                                                        num_layers=3)
     else:
         _base_dist = survae.StandardNormal
     flow = survae.Flow(_base_dist,bijections,(C,H,W))
@@ -269,7 +290,7 @@ def main(argv):
         test_loss, test_norm, samples = eval(optimizer.target, test_loader, eval_rng, sample=True)
         
 
-        assert (jnp.isfinite(test_loss)).all() == True
+        # assert (jnp.isfinite(test_loss)).all() == True
         print('test epoch: {}, loss: {:.4f}, norm_ldj: {:.4f}'.format(
             epoch, test_loss, test_norm
         ))            
