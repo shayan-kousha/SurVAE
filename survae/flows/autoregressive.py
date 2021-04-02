@@ -55,19 +55,10 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
         _, x = self.autoregressive(x, rng=rng, cond=cond)
         return x
     
-    def autoregressive(self, x, rng=None, cond=None):
-        # if type(rng) != type(None):
-        #     ipdb.set_trace()
-        
+    def autoregressive(self, x, rng=None, cond=None):        
         x = jnp.transpose(x,(0,2,3,1))
         shape = x.shape
-
-
-
-
         if cond != None:
-            # cond - In: NHWC Out: NHW+self.feature
-            # cond = jax.lax.stop_gradient(cond)
             cond = jnp.transpose(cond,(0,2,3,1))
             cond = self.conv_cond2(jax.nn.relu(self.conv_cond1(cond)))
         
@@ -88,9 +79,10 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
             params = self.conv_out(_x)
             if type(rng) != type(None):
                 rng, _ = random.split(rng)
-                x = jax.ops.index_update(x, jax.ops.index[:,:,:,c], self.base_dist.sample(rng,1,params).squeeze(axis=(0,-1)))
+                x = jax.ops.index_update(x, jax.ops.index[:,:,:,c], 
+                            self.base_dist.sample(rng=rng,num_samples=1,params=params).squeeze(axis=(0,-1)))
             else:
-                log_prob += self.base_dist.log_prob(jnp.expand_dims(x[:,:,:,c],axis=-1), params)
+                log_prob += self.base_dist.log_prob(x=jnp.expand_dims(x[:,:,:,c],axis=-1), params=params)
             _x = jnp.expand_dims(x[:,:,:,c],axis=-1)
 
         x = jnp.transpose(x,(0,3,1,2))

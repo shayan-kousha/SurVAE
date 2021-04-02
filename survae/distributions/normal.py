@@ -15,8 +15,9 @@ class StandardNormal(nn.Module, Distribution):
         return sum_except_batch(norm.logpdf(x))
 
     @classmethod
-    def sample(cls, rng, num_samples, params, *args, **kwargs):
-        shape = params.shape
+    def sample(cls, rng, num_samples, params, shape=None, *args, **kwargs):
+        if shape == None:
+            shape = params.shape
         return random.normal(rng, (num_samples,)+shape)
 
 class MeanNormal(nn.Module, Distribution):
@@ -27,8 +28,9 @@ class MeanNormal(nn.Module, Distribution):
 
 
     @classmethod
-    def sample(cls, rng, num_samples, params, *args, **kwargs):
-        shape = params.shape
+    def sample(cls, rng, num_samples, params, shape=None, *args, **kwargs):
+        if shape == None:
+            shape = params.shape
         return random.normal(rng, (num_samples,)+shape) + params
 
 
@@ -41,9 +43,10 @@ class Normal(nn.Module, Distribution):
 
 
     @classmethod
-    def sample(cls, rng, num_samples, params, axis=-1, *args, **kwargs):
+    def sample(cls, rng, num_samples, params, shape=None, axis=-1, *args, **kwargs):
         mean, log_std = jnp.split(params, 2, axis=axis)
-        shape = mean.shape
+        if shape == None:
+            shape = mean.shape
         return random.normal(rng, (num_samples,)+shape) * jnp.exp(log_std) + mean
 
 
@@ -73,12 +76,13 @@ class ConditionalNormal(nn.Module, Distribution):
         return sum_except_batch(norm.logpdf(x, loc=mean, scale=jnp.exp(log_std)))
 
 
-    def sample(self, rng, num_samples, cond, *args, **kwargs):
+    def sample(self, rng, num_samples, cond, shape=None, *args, **kwargs):
         if cond != None:
             cond = jnp.transpose(cond,(0,2,3,1))
             cond = self.conv_cond2(jnp.tanh(self.conv_cond1(cond)))
             cond = jnp.transpose(cond,(0,3,1,2))
         mean, log_std = jnp.split(cond, 2, axis=1)
-        shape = mean.shape
-        return random.normal(rng, shape) * jnp.exp(log_std) + mean
+        if shape == None:
+            shape = mean.shape
+        return random.normal(rng, (num_samples,) + shape) * jnp.exp(log_std) + mean
 
