@@ -175,9 +175,8 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
 @jax.jit
 def train_step(optimizer, batch, lr, rng):
     def loss_fn(params):
-        log_prob, norm = model().apply({'params': params}, batch, debug=False,rng=rng)
+        log_prob= model().apply({'params': params}, batch, debug=False,rng=rng)
         log_prob /= float(np.log(2.)*3*32*32)
-        norm /= float(np.log(2.)*3*32*32)
         return -log_prob.mean()
     grad_fn = jax.value_and_grad(loss_fn)
     value,  grad = grad_fn(optimizer.target)
@@ -195,14 +194,11 @@ def sampling(params,rng,num_samples=4):
 
 def eval(params, dataloader, z_rng, sample=False):
     print("===== Evaluating ========")
-
     log_prob = []
-    norm = []
     for x, _ in dataloader:
         x = jnp.array(x)
-        _log_prob, _norm = eval_step(params, x, z_rng)
+        _log_prob = eval_step(params, x, z_rng)
         log_prob.append(_log_prob)
-        norm.append(_norm)
     generate_images = None
     if sample:
         print("===== Sampling ========")
@@ -210,9 +206,8 @@ def eval(params, dataloader, z_rng, sample=False):
     log_prob = jnp.array(log_prob).mean()
     log_prob /= float(np.log(2.)*3*32*32)
     # ipdb.set_trace()
-    norm = jnp.array(norm).mean()
-    norm /= float(np.log(2.)*3*32*32)
-    return -log_prob, norm, generate_images
+
+    return -log_prob, generate_images
 
 
 
@@ -261,9 +256,9 @@ def main(argv):
 
     rng, eval_rng = random.split(rng, 2)
     print("Start Training")
-    test_loss, test_norm, samples = eval(optimizer.target, test_loader, eval_rng, sample=True)
-    print('test epoch: {}, loss: {:.4f}, norm_ldj: {:.4f}'.format(
-        start_epoch-1, test_loss, test_norm
+    test_loss, samples = eval(optimizer.target, test_loader, eval_rng, sample=True)
+    print('test epoch: {}, loss: {:.4f}'.format(
+        start_epoch-1, test_loss
     ))
     if samples != None:
         try:
@@ -287,12 +282,12 @@ def main(argv):
             i += 1
             
 
-        test_loss, test_norm, samples = eval(optimizer.target, test_loader, eval_rng, sample=True)
+        test_loss, samples = eval(optimizer.target, test_loader, eval_rng, sample=True)
         
 
         # assert (jnp.isfinite(test_loss)).all() == True
-        print('test epoch: {}, loss: {:.4f}, norm_ldj: {:.4f}'.format(
-            epoch, test_loss, test_norm
+        print('test epoch: {}, loss: {:.4f}'.format(
+            epoch, test_loss
         ))            
         if samples != None:
             try:

@@ -29,27 +29,16 @@ class Flow(nn.Module, Distribution):
             self._transforms = []
 
     # TODO we dont need rng for bijections
-    def __call__(self, x, debug=False, *args, **kwargs):
-        return self.log_prob(x, debug, *args, **kwargs)
+    def __call__(self, x, *args, **kwargs):
+        return self.log_prob(x, *args, **kwargs)
 
-    def log_prob(self, x, debug=False, *args, **kwargs):
+    def log_prob(self, x, *args, **kwargs):
         log_prob = jnp.zeros(x.shape[0])
-        norm = jnp.zeros(x.shape[0])
         for i,transform in enumerate(self._transforms):
             x, ldj = transform(x, *args, **kwargs)
-            if debug:
-                ipdb.set_trace()
-            if isinstance(ldj, tuple):
-                log_prob += ldj[0]
-                norm += ldj[1]**2
-            elif transform.__class__.__name__ == 'UniformDequantization':
-                log_prob += ldj
-            else:
-                log_prob += ldj
-                norm += ldj**2
-        # ipdb.set_trace()
+            log_prob += ldj
         log_prob += self._base_dist.log_prob(x, params=jnp.zeros(self.latent_size), *args, **kwargs)
-        return log_prob, norm
+        return log_prob
 
     def sample(self, rng, num_samples, *args, **kwargs):
 

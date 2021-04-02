@@ -22,7 +22,7 @@ class UniformDequantization(nn.Module,Surjective):
     
     @nn.compact
     def __call__(self, x, rng, *args, **kwargs):
-        return self.forward(x, rng)
+        return self.forward(x=x, rng=rng)
 
     def forward(self, x, rng, *args, **kwargs):
         if self._dtype == None:
