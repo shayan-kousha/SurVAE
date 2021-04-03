@@ -105,10 +105,10 @@ class AbsFlow(Flow):
     def log_prob(self,  x, *args, **kwargs):
         log_det_J, z =  jnp.zeros(x.shape[0]), x
         for layer in self._transforms:
-            z, log_det_J_layer = layer(x=x, *args, **kwargs)
+            x, log_det_J_layer = layer(x=x, *args, **kwargs)
             log_det_J += log_det_J_layer
 
-        return self.base_dist.log_prob(z, params=None) + log_det_J
+        return self.base_dist.log_prob(x, params=None) + log_det_J
 
     def sample(self, rng, num_samples, *args, **kwargs):
         x = self.base_dist.sample(rng=rng, num_samples=num_samples, params=jnp.zeros(self.latent_size))
