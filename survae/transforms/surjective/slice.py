@@ -25,10 +25,10 @@ class Slice(nn.Module, Surjective):
             self._decoder = self.decoder()
     
     @nn.compact
-    def __call__(self, rng, x):
-        return self.forward(rng, x)
+    def __call__(self, x, *args, **kwargs):
+        return self.forward(x)
 
-    def forward(self, rng, x):
+    def forward(self, x, *args, **kwargs):
         z = jnp.split(x,[self.num_keep, x.shape[self.dim]],axis=self.dim)
         params = None
         if self.latent_size != None:
@@ -38,7 +38,7 @@ class Slice(nn.Module, Surjective):
         log_prob = self.base_dist.log_prob(z[1], params=params)
         return z[0], log_prob
 
-    def inverse(self, rng, z):
+    def inverse(self, z, rng, *args, **kwargs):
         params = None
         if self.latent_size != None:
             params = jnp.zeros(self.latent_size)
