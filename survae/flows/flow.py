@@ -41,14 +41,10 @@ class Flow(nn.Module, Distribution):
 
     def sample(self, rng, num_samples, *args, **kwargs):
 
-        # TODO instead of params we can pass latent size
-        # if params == None:
-        #     params=jnp.zeros(self.latent_size)
-        # ipdb.set_trace()
         z = self._base_dist.sample(rng=rng, num_samples=num_samples, params=jnp.zeros(self.latent_size), *args, **kwargs)
         for i, transform in enumerate(reversed(self._transforms)):
             # ipdb.set_trace()
-            z = transform.inverse(z, *args, **kwargs)
+            z = transform.inverse(z=z, rng=rng, *args, **kwargs)
         return z
 
 

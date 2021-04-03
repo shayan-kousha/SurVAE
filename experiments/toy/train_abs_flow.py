@@ -113,7 +113,7 @@ for layer in range(args.num_flows):
 # transforms.pop()
 
 # Construct Flow
-absflow = AbsFlow(base_dist=StandardNormal, transforms=transforms, latent_size=(2,))
+absflow = Flow(base_dist=StandardNormal, transforms=transforms, latent_size=(2,))
 params = absflow.init(key, rng=rng,x=train_data[:2])
 
 
@@ -135,7 +135,7 @@ plt.savefig('./experiments/toy/figures/{}_train_data.png'.format(args.dataset), 
 
 
 # Plot the model samples before training
-before_train = absflow.apply(params, rng, args.train_samples, method=absflow.sample)
+before_train = absflow.apply(params, rng=rng, num_samples=args.train_samples, method=absflow.sample)
 # scat = plt.scatter(before_train[:, 0], before_train[:, 1], cmap="bwr", alpha=0.5, s=1)
 # plt.savefig('./experiments/toy/figures/before_train.png')
 # scat.remove()
