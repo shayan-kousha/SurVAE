@@ -34,7 +34,7 @@ class Flow(nn.Module, Distribution):
     def log_prob(self, x, *args, **kwargs):
         log_prob = jnp.zeros(x.shape[0])
         for i,transform in enumerate(self._transforms):
-            x, ldj = transform(x, *args, **kwargs)
+            x, ldj = transform(x=x, *args, **kwargs)
             log_prob += ldj
         log_prob += self._base_dist.log_prob(x, params=jnp.zeros(self.latent_size), *args, **kwargs)
         return log_prob
