@@ -70,7 +70,6 @@ elif args.dataset == 'eightgaussians':
 	train_data = EightGaussiansDataset(args.train_samples).get_data()
 	test_data = EightGaussiansDataset(args.test_samples).get_data()
 
-# data = EightGaussiansDataset(num_points=1000).get_data()
 
 # Define Transforms
 transforms = [Abs._setup(Bernoulli)]
@@ -105,22 +104,15 @@ class Transform(nn.Module):
 
         return x, nn.tanh(log_scale)
 
-permutation = jnp.arange(1, -1 , -1)
 for layer in range(args.num_flows):
 	net = AffineCoupling._setup(Transform._setup(StandardNormal, args.hidden_units , train_data[0].shape[0]), _reverse_mask=layer % 2 != 0)
 	transforms.append(net)
-#     transforms.append(Permute._setup(permutation, 1))
-# transforms.pop()
 
 # Construct Flow
 absflow = Flow(base_dist=StandardNormal, transforms=transforms, latent_size=(2,))
 params = absflow.init(key, rng=rng,x=train_data[:2])
 
 
-# Plot training data
-# scat = plt.scatter(train_data[:, 0], train_data[:, 1], cmap="bwr", alpha=0.5, s=1)
-# plt.savefig('./experiments/toy/figures/train_data.png')
-# scat.remove()
 if args.dataset == 'face_einstein':
     bounds = [[0, 1], [0, 1]]
 else:
@@ -136,9 +128,7 @@ plt.savefig('./experiments/toy/figures/{}_train_data.png'.format(args.dataset), 
 
 # Plot the model samples before training
 before_train = absflow.apply(params, rng=rng, num_samples=args.train_samples, method=absflow.sample)
-# scat = plt.scatter(before_train[:, 0], before_train[:, 1], cmap="bwr", alpha=0.5, s=1)
-# plt.savefig('./experiments/toy/figures/before_train.png')
-# scat.remove()
+
 plt.figure(figsize=(args.pixels/args.dpi, args.pixels/args.dpi), dpi=args.dpi)
 plt.hist2d(before_train[...,0], before_train[...,1], bins=256, range=bounds)
 plt.xlim(bounds[0])
@@ -177,8 +167,7 @@ for e in range(args.epochs):
         print('epoch %s/%s:' % (e, args.epochs), 'loss = %.3f' % batch_loss, 'val_loss = %0.3f' % validation_loss)
 
 after_train = absflow.apply(optimizer.target, rng, args.test_samples, method=absflow.sample)
-# plt.scatter(after_train[:, 0], after_train[:, 1], cmap="bwr", alpha=0.5, s=1)
-# plt.savefig('./experiments/toy/figures/after_train.png')
+
 plt.figure(figsize=(args.pixels/args.dpi, args.pixels/args.dpi), dpi=args.dpi)
 plt.hist2d(after_train[...,0], after_train[...,1], bins=256, range=bounds)
 plt.xlim(bounds[0])
@@ -186,4 +175,3 @@ plt.ylim(bounds[1])
 plt.axis('off')
 plt.savefig('./experiments/toy/figures/{}_abs_flow_samples_after_training.png'.format(args.dataset), bbox_inches = 'tight', pad_inches = 0)
 print("Done!")
-# test
