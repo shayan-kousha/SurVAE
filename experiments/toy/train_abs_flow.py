@@ -114,7 +114,8 @@ for layer in range(args.num_flows):
 
 # Construct Flow
 absflow = AbsFlow(base_dist=StandardNormal, transforms=transforms, latent_size=(2,))
-params = absflow.init(key, rng, train_data[:2])
+params = absflow.init(key, rng=rng,x=train_data[:2])
+
 
 # Plot training data
 # scat = plt.scatter(train_data[:, 0], train_data[:, 1], cmap="bwr", alpha=0.5, s=1)
@@ -151,7 +152,7 @@ optimizer = optimizer_def.create(params)
 
 @jax.jit
 def loss_fn(params, batch):
-    return -jnp.mean(absflow.apply(params, rng, batch, method=absflow.log_prob))
+    return -jnp.mean(absflow.apply(params, rng=rng, x=batch, method=absflow.log_prob))
 
 @jax.jit
 def train_step(optimizer, batch):

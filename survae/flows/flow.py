@@ -28,7 +28,6 @@ class Flow(nn.Module, Distribution):
         else:
             self._transforms = []
 
-    # TODO we dont need rng for bijections
     def __call__(self, x, *args, **kwargs):
         return self.log_prob(x, *args, **kwargs)
 
@@ -114,7 +113,7 @@ class AbsFlow(Flow):
     def sample(self, rng, num_samples, *args, **kwargs):
         x = self.base_dist.sample(rng=rng, num_samples=num_samples, params=jnp.zeros(self.latent_size))
         for layer in reversed(self._transforms):
-            x = layer.inverse(rng=rng, x=x)
+            x = layer.inverse(rng=rng, z=x)
         # TODO add log_det_J_layer
 
         return x
