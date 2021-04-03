@@ -171,11 +171,15 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
     return flow
 
 
+@jax.jit
+def loss(params, batch, rng):
+    return model().apply({'params': params}, batch, rng=rng)
 
 @jax.jit
 def train_step(optimizer, batch, lr, rng):
     def loss_fn(params):
-        log_prob= model().apply({'params': params}, batch, debug=False,rng=rng)
+        log_prob = loss(params, batch, rng)
+        # log_prob= model().apply({'params': params}, batch, debug=False,rng=rng)
         log_prob /= float(np.log(2.)*3*32*32)
         return -log_prob.mean()
     grad_fn = jax.value_and_grad(loss_fn)
@@ -183,9 +187,6 @@ def train_step(optimizer, batch, lr, rng):
     optimizer = optimizer.apply_gradient(grad,learning_rate=lr)
     return optimizer, value
 
-@jax.jit
-def eval_step(params, batch, rng):
-    return model().apply({'params': params}, batch, debug=False,rng=rng)
 
 def sampling(params,rng,num_samples=4):
     generate_images = model().apply({'params': params}, rng=rng, num_samples=num_samples, _rng=rng ,method=model().sample)
@@ -197,7 +198,7 @@ def eval(params, dataloader, z_rng, sample=False):
     log_prob = []
     for x, _ in dataloader:
         x = jnp.array(x)
-        _log_prob = eval_step(params, x, z_rng)
+        _log_prob = loss(params, x, z_rng)
         log_prob.append(_log_prob)
     generate_images = None
     if sample:
@@ -269,15 +270,16 @@ def main(argv):
     i = 1 + optimizer.state_dict()['state']['step']
     for epoch in range(start_epoch,FLAGS.num_epochs):
         train_bar = tqdm(train_loader)
+        train_loss = []
         for batch, _ in train_bar:
             batch = jnp.array(batch)
             rng, key = random.split(rng)
 
             lr = min(1,i/FLAGS.warmup) * FLAGS.learning_rate
-            optimizer, train_loss = train_step(optimizer, batch, lr, rng)
-
+            optimizer, _train_loss = train_step(optimizer, batch, lr, rng)
+            train_loss.append(_train_loss)
             train_bar.set_description('train epoch: {} - loss: {:.4f}'.format(
-              epoch , train_loss
+              epoch , jnp.array(train_loss).mean()
             ))
             i += 1
             
