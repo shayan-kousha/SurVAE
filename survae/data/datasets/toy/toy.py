@@ -1,4 +1,6 @@
 import numpy as np
+import torch
+import jax.numpy as jnp
 
 class CheckerBoard:
 	def __init__(self, num_points):
@@ -16,33 +18,25 @@ class Corners:
 		self.num_points = num_points
 
 	def get_data(self):
-		n = int(self.num_points / 4)
-		x1_1 = np.random.rand(n) + 1
-		x2_1 = np.random.rand(n) * 0.3 + 1
+		N = self.num_points
+		scale = 1
+		gapwidth = 1
+		cornerwidth = 3
 
-		x1_2 = np.random.rand(n) * 0.3 + 1
-		x2_2 = np.random.rand(n) + 1
+		xplusmin = torch.cat([torch.ones(N//4), -torch.ones(N//4), torch.ones(N//4), -torch.ones(N//4)])
+		yplusmin = torch.cat([torch.ones(N//4), -torch.ones(N//2), torch.ones(N//4)])
 
-		x1_3 = np.random.rand(n) - 2
-		x2_3 = np.random.rand(n) * 0.3 + 1
+		horizontal = torch.cat([xplusmin[::2] * gapwidth + xplusmin[::2] * scale * torch.rand(N//2),
+		                        yplusmin[::2] * gapwidth + cornerwidth * yplusmin[::2] * torch.rand(N//2)], dim=0)
 
-		x1_4 = np.random.rand(n) * (-0.3) - 1
-		x2_4 = np.random.rand(n) + 1
+		vertical = torch.cat([xplusmin[1::2] * gapwidth + cornerwidth * xplusmin[1::2] * torch.rand(N//2),
+		                      yplusmin[1::2] * gapwidth + yplusmin[1::2] * scale * torch.rand(N//2)], dim=0)
 
-		x1_5 = np.random.rand(n) - 2
-		x2_5 = np.random.rand(n) * (-0.3) - 1
+		data = torch.stack([horizontal, vertical], dim=-1)
+		data[...,0] *= (2*torch.bernoulli(0.5*torch.ones(N))-1)
+		data[...,1] *= (2*torch.bernoulli(0.5*torch.ones(N))-1)
 
-		x1_6 = np.random.rand(n) * (-0.3) - 1
-		x2_6 = np.random.rand(n) - 2
-
-		x1_7 = np.random.rand(n) + 1
-		x2_7 = np.random.rand(n) * (-0.3) - 1
-
-		x1_8 = np.random.rand(n) * 0.3 + 1
-		x2_8 = np.random.rand(n) - 2
-
-
-		data = np.stack([np.concatenate((x1_1, x1_2, x1_3, x1_4, x1_5, x1_6, x1_7, x1_8)), np.concatenate((x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7, x2_8))]).T
+		data = jnp.array(data.tolist())
 		return data
 
 class FourCirclesDataset:

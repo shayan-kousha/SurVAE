@@ -5,6 +5,7 @@ from survae.utils import *
 from flax import linen as nn
 import jax.numpy as jnp
 from typing import Callable
+import jax
 
 class AffineCoupling(nn.Module, Bijective):
     shift_and_scale_fn: Callable

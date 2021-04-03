@@ -35,6 +35,7 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
 
         self.lstm = [nn.ConvLSTM(features=self.hidden_size, 
                         kernel_size=self.kernel_size) for _ in range(self.num_layers)]
+
         if self.base_dist == None:
             raise TypeError()
         return
@@ -87,5 +88,4 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
 
         x = jnp.transpose(x,(0,3,1,2))
         return log_prob, x
-
 
