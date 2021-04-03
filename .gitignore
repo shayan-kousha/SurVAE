@@ -1,2 +1,7 @@
 venv/*
 **/__pycache__
+**/.DS_Store
+.vscode
+survae/data/datasets
+**/results*
+**/ckpt*

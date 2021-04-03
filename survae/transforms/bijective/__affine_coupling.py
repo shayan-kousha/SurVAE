@@ -7,16 +7,15 @@ import jax.numpy as jnp
 from typing import Callable
 
 class AffineCoupling(nn.Module, Bijective):
-    shift_and_scale_fn: Callable
+    shift_and_log_scale_fn: Callable
     _reverse_mask: bool
-    activation: Callable = jnp.exp
 
     @staticmethod
-    def _setup(shift_and_scale_fn, _reverse_mask, activation=jnp.exp):
-        return partial(AffineCoupling, shift_and_scale_fn, _reverse_mask, activation)        
+    def _setup(shift_and_log_scale_fn, _reverse_mask):
+        return partial(AffineCoupling, shift_and_log_scale_fn, _reverse_mask)        
 
     def setup(self):
-        self.shift_and_scale = self.shift_and_scale_fn()
+        self.shift_and_log_scale = self.shift_and_log_scale_fn()
     
     @nn.compact
     def __call__(self, x, *args, **kwargs):
@@ -30,16 +29,15 @@ class AffineCoupling(nn.Module, Bijective):
         if self._reverse_mask:
           x0, x1 = x1, x0
 
-        translation, scale = self.shift_and_scale(x0)
-        scale = self.activation(scale)
-        x1 *= scale
+        translation, log_scale = self.shift_and_log_scale(x0)
+        x1 *= jnp.exp(log_scale)
         x1 += translation
 
         if self._reverse_mask:
           x1, x0 = x0, x1
 
         z = jnp.concatenate([x0, x1], axis=1)
-        return z, sum_except_batch(jnp.log(scale))
+        return z, sum_except_batch(log_scale)
 
 
     def inverse(self, z, *args, **kwargs):
@@ -51,10 +49,9 @@ class AffineCoupling(nn.Module, Bijective):
         if self._reverse_mask:
             z0, z1 = z1, z0
 
-        translation, scale = self.shift_and_scale(z0)
+        translation, log_scale = self.shift_and_log_scale(z0)
         z1 -= translation
-        scale = self.activation(scale)
-        z1 /= scale
+        z1 *= jnp.exp(-log_scale)
 
         if self._reverse_mask:
             z1, z0 = z0, z1

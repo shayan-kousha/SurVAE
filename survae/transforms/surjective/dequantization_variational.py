@@ -30,10 +30,10 @@ class VariationalDequantization(nn.Module,Surjective):
         return 
     
     @nn.compact
-    def __call__(self, rng, x):
-        return self.forward(rng, x)
+    def __call__(self, x, rng,  *args, **kwargs):
+        return self.forward(x=x, rng=rng)
 
-    def forward(self, rng, x):
+    def forward(self, x, rng, *args, **kwargs):
         if self._dtype == None:
             self._dtype = x.dtype
         params = self._encoder(x)
@@ -49,7 +49,7 @@ class VariationalDequantization(nn.Module,Surjective):
         ldj = -jnp.log(2**self.num_bits) * num_dims
         return ldj.repeat(batch_size)
 
-    def inverse(self, rng, z):
+    def inverse(self, z, *args, **kwargs):
         z = 2**self.num_bits * z
         return jnp.clip(jnp.floor(z),a_min=0.,a_max=(2**self.num_bits-1)).astype(self._dtype)
     

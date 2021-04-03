@@ -9,7 +9,7 @@ from jax.scipy.stats import bernoulli
 class Bernoulli(nn.Module, Distribution):
 
     @classmethod
-    def log_prob(cls, x, params=None):
+    def log_prob(cls, x, params=None, *args, **kwargs):
         if params == None:
             params = jnp.zeros(1)
         p = nn.tanh(params*0.5) * (0.5-1e-4) + 0.5
@@ -18,10 +18,11 @@ class Bernoulli(nn.Module, Distribution):
         # return ce
 
     @classmethod
-    def sample(cls, rng, num_samples, params=None):
+    def sample(cls, rng, num_samples, params=None, shape=None, *args, **kwargs):
         if params == None:
             params = jnp.zeros(1)
         p = nn.tanh(params*0.5) * (0.5-1e-4) + 0.5
-        shape = p.shape[-1]
-        return random.bernoulli(rng, p, (num_samples,)+(shape,))
+        if shape == None:
+            shape = p.shape
+        return random.bernoulli(rng, p, (num_samples,)+shape)
         # return p >= 0.5

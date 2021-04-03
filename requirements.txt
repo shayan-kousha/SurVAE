@@ -7,3 +7,7 @@ pillow
 flax==0.3.0
 ipdb
 tensorflow-datasets
+torch
+torchvision
+tqdm
+absl-py

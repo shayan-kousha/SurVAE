@@ -44,6 +44,7 @@ def save_image(ndarray, fp, nrow=8, padding=2, pad_value=0.0, format=None):
         raise TypeError('array_like of tensors expected, got {}'.format(type(ndarray)))
 
     ndarray = jnp.asarray(ndarray)
+    print("image size - ",ndarray.shape)
 
     if ndarray.ndim == 4 and ndarray.shape[-1] == 1:  # single-channel images
         ndarray = jnp.concatenate((ndarray, ndarray, ndarray), -1)
@@ -67,6 +68,7 @@ def save_image(ndarray, fp, nrow=8, padding=2, pad_value=0.0, format=None):
         k = k + 1
 
     # Add 0.5 after unnormalizing to [0, 255] to round to nearest integer
-    ndarr = jnp.clip(grid * 255.0 + 0.5, 0, 255).astype(jnp.uint8)
+    # ndarr = jnp.clip(grid * 255.0 + 0.5, 0, 255).astype(jnp.uint8)
+    ndarr = grid.astype(jnp.uint8)
     im = Image.fromarray(ndarr.copy())
     im.save(fp, format=format)
