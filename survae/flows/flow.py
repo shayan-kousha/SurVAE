@@ -87,8 +87,8 @@ class AbsFlow(Flow):
     transforms: Union[List[Transform],None] = None
     latent_size: Union[Tuple[int],None] = None
 
-    def __call__(self, rng, x):
-        return self.log_prob(rng, x)
+    def __call__(self,  x, *args, **kwargs):
+        return self.log_prob( x=x, *args, **kwargs)
 
     def setup(self):
         if self.base_dist == None:
@@ -103,18 +103,18 @@ class AbsFlow(Flow):
     def _setup(base_dist, transforms, latent_size):
         return partial(AbsFlow, base_dist=base_dist, transforms=transforms, latent_size=latent_size)
 
-    def log_prob(self, rng, x):
+    def log_prob(self,  x, *args, **kwargs):
         log_det_J, z =  jnp.zeros(x.shape[0]), x
         for layer in self._transforms:
-            z, log_det_J_layer = layer(rng, z)
+            z, log_det_J_layer = layer(x=x, *args, **kwargs)
             log_det_J += log_det_J_layer
 
         return self.base_dist.log_prob(z, params=None) + log_det_J
 
-    def sample(self, rng, num_samples):
-        x = self.base_dist.sample(rng, num_samples, params=jnp.zeros(self.latent_size))
+    def sample(self, rng, num_samples, *args, **kwargs):
+        x = self.base_dist.sample(rng=rng, num_samples=num_samples, params=jnp.zeros(self.latent_size))
         for layer in reversed(self._transforms):
-            x = layer.inverse(rng, x)
+            x = layer.inverse(rng=rng, x=x)
         # TODO add log_det_J_layer
 
         return x
