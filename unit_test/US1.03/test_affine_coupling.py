@@ -87,7 +87,7 @@ def train_real_nvp(dataset, monitor_every=10):
             x = real_nvp.apply(optimizer.target, rng, 25, method=real_nvp.sample)
             x = (logistic(x) - dataset.alpha) / (1 - 2*dataset.alpha)
             disp_imdata(x, data.image_size, [5, 5])
-            plt.savefig('./unit_test/US1.03/samples/{}/epoch-{}.png'.format(dataset.name, e))
+            # plt.savefig('./unit_test/US1.03/samples/{}/epoch-{}.png'.format(dataset.name, e))
 
             print('epoch %s/%s batch %s/%s:' % (e+1, epoch, batch, int(num_training_data/batch_size)), 'loss = %.3f' % loss_val, 'val_loss = %0.3f' % validation_loss)
 
