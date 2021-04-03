@@ -34,21 +34,17 @@ class Flow(nn.Module, Distribution):
     def log_prob(self, x, *args, **kwargs):
         log_prob = jnp.zeros(x.shape[0])
         for i,transform in enumerate(self._transforms):
-            x, ldj = transform(x, *args, **kwargs)
+            x, ldj = transform(x=x, *args, **kwargs)
             log_prob += ldj
         log_prob += self._base_dist.log_prob(x, params=jnp.zeros(self.latent_size), *args, **kwargs)
         return log_prob
 
     def sample(self, rng, num_samples, *args, **kwargs):
 
-        # TODO instead of params we can pass latent size
-        # if params == None:
-        #     params=jnp.zeros(self.latent_size)
-        # ipdb.set_trace()
         z = self._base_dist.sample(rng=rng, num_samples=num_samples, params=jnp.zeros(self.latent_size), *args, **kwargs)
         for i, transform in enumerate(reversed(self._transforms)):
             # ipdb.set_trace()
-            z = transform.inverse(z, *args, **kwargs)
+            z = transform.inverse(z=z, rng=rng, *args, **kwargs)
         return z
 
 
