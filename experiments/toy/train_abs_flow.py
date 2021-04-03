@@ -185,3 +185,4 @@ plt.ylim(bounds[1])
 plt.axis('off')
 plt.savefig('./experiments/toy/figures/{}_abs_flow_samples_after_training.png'.format(args.dataset), bbox_inches = 'tight', pad_inches = 0)
 print("Done!")
+# test
