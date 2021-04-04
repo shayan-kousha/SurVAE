@@ -87,7 +87,7 @@ class SimpleMaxPoolSurjection2d(nn.Module, Surjective):
         xds = jnp.transpose(xd.reshape(b,c//3,3,h,w), (0,1,3,4,2)) # (B,3*C,H,W)->(B,C,H,W,3)
         xr = jnp.expand_dims(z, axis=-1)-xds
         mask = self._k_mask(k)
-        xs = z.new_zeros(z.shape+(4,))
+        xs = jnp.zeros(z.shape+(4,), dtype=z.dtype)
         xs.masked_scatter_(mask, z)
         xs.masked_scatter_(~mask, xr)
         x = self._unsqueeze(xs)

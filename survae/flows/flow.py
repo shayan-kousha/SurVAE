@@ -173,7 +173,6 @@ class PoolFlowExperiment(Flow):
         params = {
             "loc": self.loc,
             "log_scale": self.log_scale,
-            "shape": self.current_shape,
         }
         return self.base_dist.log_prob(z, params=params) + log_det_J
         
@@ -181,9 +180,8 @@ class PoolFlowExperiment(Flow):
         params = {
             "loc": self.loc,
             "log_scale": self.log_scale,
-            "shape": self.current_shape,
         }
-        x = self.base_dist.sample(rng, num_samples, params=params)
+        x = self.base_dist.sample(rng, num_samples, params=params, shape=self.current_shape)
         for layer in reversed(self._transforms):
             x = layer.inverse(x, rng, *args, **kwargs)
 

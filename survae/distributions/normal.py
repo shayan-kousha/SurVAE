@@ -68,10 +68,9 @@ class DiagonalNormal(Distribution):
         return sum_except_batch(norm.logpdf(x, loc, jnp.exp(jnp.tanh(log_scale))))
 
     @classmethod
-    def sample(cls, rng, num_samples, params):
+    def sample(cls, rng, num_samples, params, shape=None):
         loc = params["loc"].reshape((1, -1, 1, 1))
         log_scale = params["log_scale"].reshape((1, -1, 1, 1))
-        shape = params["shape"]
         return loc + jnp.exp(jnp.tanh(log_scale)) * random.normal(rng, (num_samples,)+(shape))
     
 class StandardHalfNormal(Distribution):

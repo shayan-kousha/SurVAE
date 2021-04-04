@@ -250,7 +250,7 @@ class DequantizationFlow(Flow):
         # Final shuffle of channels, squeeze and sigmoid
         transforms.extend([Conv1x1._setup(sample_shape[0]),
                            Unsqueeze2d._setup(),
-                           Sigmoid._setup()
+                           Sigmoid._setup(0.0, 1)
                           ])
         
         return partial(DequantizationFlow, sample_shape=sample_shape, base_dist=DiagonalNormal, transforms=transforms, latent_size=None, context_init=context_net)
@@ -272,7 +272,6 @@ class DequantizationFlow(Flow):
         params = {
             "loc": self.loc_dequantization,
             "log_scale": self.log_scale_dequantization,
-            "shape": self.sample_shape,
         }
 
         if self._context_init:
@@ -281,7 +280,7 @@ class DequantizationFlow(Flow):
                     context = jnp.transpose(context_layer(jnp.transpose(context, (0, 2, 3, 1))), (0, 3, 1, 2))
                 else:
                     context = context_layer(context)
-        z, log_prob = self.base_dist.sample_with_log_prob(rng, context.shape[0], params)
+        z, log_prob = self.base_dist.sample_with_log_prob(rng, context.shape[0], params, self.sample_shape)
         for transform in self._transforms:
             if isinstance(transform, ConditionalTransform):
                 z, ldj = transform(z, context)
