@@ -500,10 +500,12 @@ def train_max_pooling():
         train_loss = []
         validation_loss = []
         for x in train_loader:
+            rng, key = random.split(rng)
             optimizer, loss_val = train_step(optimizer, np.array(x), rng)
             train_loss.append(loss_val)
         
         for x in eval_loader:
+            rng, key = random.split(rng)
             loss_val = eval_step(optimizer.target, np.array(x), rng)
             validation_loss.append(loss_val)
 

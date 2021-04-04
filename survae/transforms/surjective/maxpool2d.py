@@ -70,24 +70,14 @@ class SimpleMaxPoolSurjection2d(nn.Module, Surjective):
         z = xs.max(-1)
         k = jnp.argmax(xs, axis=-1)
         mask = self._k_mask(k)
-        xr = xs[~mask].reshape((k.shape+(3,)))
 
-
-        # bbb = jnp.zeros(4608)
-        # xr = jnp.where(~mask, xs, jnp.nan)
-        # xr = xr.reshape((-1))
-        # nan_mask = jnp.isnan(xr)
-        # nan_pos = jnp.sort(nan_mask)[::-1]
-        # not_nan_pos = jnp.sort(~nan_mask)
-        # emp = jnp.empty(xr.shape)
-        # emp = jax.ops.index_update(emp, nan_pos, jnp.nan)
-        # emp = jax.ops.index_update(emp, not_nan_pos, xr[~nan_mask])
-        # bbb = emp[1536:]
-        # # bbb = xr[np.logical_not(np.isnan(xr))]
-
+        mask = ~mask
+        flatten_mask = mask.flatten()
+        indices = jnp.where(flatten_mask, jnp.arange(flatten_mask.shape[0]), flatten_mask.shape[0]+1)
+        indices = jnp.sort(indices)[:-np.prod(z.shape)]
+        xr = jnp.take(xs, indices).reshape((k.shape+(3,)))
 
         xds = jnp.expand_dims(z, axis=-1)-xr
-        # xds = jnp.expand_dims(z, axis=-1)-bbb.reshape((k.shape+(3,)))
         b,c,h,w,_ = xds.shape
         xd = jnp.transpose(xds, (0,1,4,2,3)).reshape(b,3*c,h,w) # (B,C,H,W,3)->(B,3*C,H,W)
         return z, xd, k
