@@ -63,8 +63,6 @@ class Conv1x1(nn.Module, Bijective):
             sign_s = jax.lax.stop_gradient(self.params['sign_s'])
             log_s = self.params['log_s']
             shape = L.shape
-            # L = L * jnp.tril(jnp.ones(shape),k=-1) + jnp.eye(shape[0])
-            # U = U * jnp.triu(jnp.ones(shape),k=1) + jnp.diag(sign_s * jnp.exp(log_s))
             L = jnp.tril(L,k=-1) + jnp.eye(shape[0])
             U = jnp.triu(U,k=1) + jnp.diag(sign_s * jnp.exp(log_s))
             if inverse:
