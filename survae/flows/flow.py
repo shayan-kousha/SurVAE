@@ -164,12 +164,10 @@ class PoolFlowExperiment(Flow):
         self.loc = self.param('loc', jax.nn.initializers.zeros, self.current_shape[0])
         self.log_scale = self.param('log_scale', jax.nn.initializers.zeros, self.current_shape[0])
 
-    def log_prob(self, rng, x, params=None):
+    def log_prob(self, x, *args, **kwargs):
         log_det_J, z =  jnp.zeros(x.shape[0]), x
         for layer in self._transforms:
-            z, log_det_J_layer = layer(rng, z)
-            # import ipdb;ipdb.set_trace()
-            
+            z, log_det_J_layer = layer(z, *args, **kwargs)
             log_det_J += log_det_J_layer
 
         params = {
@@ -179,7 +177,7 @@ class PoolFlowExperiment(Flow):
         }
         return self.base_dist.log_prob(z, params=params) + log_det_J
         
-    def sample(self, rng, num_samples): 
+    def sample(self, rng, num_samples, *args, **kwargs): 
         params = {
             "loc": self.loc,
             "log_scale": self.log_scale,
@@ -187,7 +185,7 @@ class PoolFlowExperiment(Flow):
         }
         x = self.base_dist.sample(rng, num_samples, params=params)
         for layer in reversed(self._transforms):
-            x = layer.inverse(rng, x)
+            x = layer.inverse(x, rng, *args, **kwargs)
 
         return x
 

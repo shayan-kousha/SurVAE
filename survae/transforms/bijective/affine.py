@@ -28,21 +28,21 @@ class ScalarAffineBijection(nn.Module, Bijective):
         return partial(ScalarAffineBijection, shift, scale)
 
     @nn.compact
-    def __call__(self, rng, x):
+    def __call__(self, x, *args, **kwargs):
         return self.forward(x)
 
     @property
     def _log_scale(self):
         return np.log(np.abs(self._scale))
 
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         batch_size = x.shape[0]
         num_dims = np.prod(x.shape[1:])
         z = x * self._scale + self._shift
         ldj = np.full((batch_size), self._log_scale * num_dims, dtype=x.dtype)
         return z, ldj
 
-    def inverse(self, rng, z):
+    def inverse(self, z, rng, *args, **kwargs):
         batch_size = z.shape[0]
         num_dims = np.prod(z.shape[1:])
         x = (z - self._shift) / self._scale

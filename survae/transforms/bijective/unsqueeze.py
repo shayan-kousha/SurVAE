@@ -15,14 +15,14 @@ class Unsqueeze2d(Squeeze2d):
         return partial(Unsqueeze2d, factor=factor, ordered=ordered)
 
     @nn.compact
-    def __call__(self, rng, x):
+    def __call__(self, x, *args, **kwargs):
         return self.forward(x)
 
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         z = self._unsqueeze(x)
         ldj = jnp.zeros(x.shape[0], dtype=x.dtype)
         return z, ldj
 
-    def inverse(self, z):
+    def inverse(self, z, *args, **kwargs):
         x = self._squeeze(z)
         return x

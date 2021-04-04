@@ -152,7 +152,7 @@ class ConditionalCoupling(nn.Module, Bijective, ConditionalTransform):
     def setup(self):
         self._coupling_net = [coupling() for coupling in self.coupling_net]
 
-    def __call__(self, x, context):
+    def __call__(self, x, context, *args, **kwargs):
         return self.forward(x, context)
 
     def _elementwise_forward(self, x, elementwise_params):
@@ -268,7 +268,7 @@ class DequantizationFlow(Flow):
         self.loc_dequantization = self.param('loc_dequantization', jax.nn.initializers.zeros, self.sample_shape[0])
         self.log_scale_dequantization = self.param('log_scale_dequantization', jax.nn.initializers.zeros, self.sample_shape[0])
 
-    def sample_with_log_prob(self, rng, context):
+    def sample_with_log_prob(self, context, rng):
         params = {
             "loc": self.loc_dequantization,
             "log_scale": self.log_scale_dequantization,
@@ -281,15 +281,12 @@ class DequantizationFlow(Flow):
                     context = jnp.transpose(context_layer(jnp.transpose(context, (0, 2, 3, 1))), (0, 3, 1, 2))
                 else:
                     context = context_layer(context)
-        # if isinstance(self.base_dist, ConditionalDistribution):
-        #     z, log_prob = self.base_dist.sample_with_log_prob(context)
-        # else:
         z, log_prob = self.base_dist.sample_with_log_prob(rng, context.shape[0], params)
         for transform in self._transforms:
             if isinstance(transform, ConditionalTransform):
                 z, ldj = transform(z, context)
             else:
-                z, ldj = transform(rng, z)
+                z, ldj = transform(z, rng)
             log_prob -= ldj
         return z, log_prob
 
@@ -323,7 +320,7 @@ class Coupling(nn.Module, Bijective):
         self._coupling_net = [coupling() for coupling in self.coupling_net]
 
     @nn.compact
-    def __call__(self, rng, x):
+    def __call__(self, x, rng, *args, **kwargs):
         return self.forward(x)
 
     def _elementwise_forward(self, x, elementwise_params):
@@ -351,7 +348,7 @@ class Coupling(nn.Module, Bijective):
         else:
             return jnp.split(input, 2, axis=self.split_dim)
 
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         id, x2 = self.split_input(x)
         elementwise_params = id
         for coupling_layer in self._coupling_net:
@@ -360,7 +357,7 @@ class Coupling(nn.Module, Bijective):
         z = jnp.concatenate([id, z2], axis=self.split_dim)
         return z, ldj
 
-    def inverse(self, rng, z):
+    def inverse(self, z, rng, *args, **kwargs):
         # with torch.no_grad():
         id, z2 = self.split_input(z)
         elementwise_params = id
@@ -459,7 +456,7 @@ def train_max_pooling():
     rng = random.PRNGKey(0)
     rng, key = random.split(rng)
     pooling_model = PoolFlowExperiment(current_shape=current_shape, base_dist=DiagonalNormal, transforms=transformations, latent_size=None)
-    params = pooling_model.init(key, rng, np.array(next(iter(train_loader)))[:2])
+    params = pooling_model.init(rngs=key, rng=rng, x=np.array(next(iter(train_loader)))[:2])
     optimizer_def = optim.Adam(learning_rate=args.lr)
     optimizer = optimizer_def.create(params)
     
@@ -469,7 +466,7 @@ def train_max_pooling():
 
     @jax.jit
     def loss_fn(params, batch, rng):
-        return -jnp.sum(pooling_model.apply(params, rng, batch, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
+        return -jnp.sum(pooling_model.apply(params, batch, rng, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
 
     @jax.jit
     def train_step(optimizer, batch, rng):
