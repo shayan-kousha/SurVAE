@@ -29,10 +29,10 @@ class Split(nn.Module, Bijective):
         ldj =  self._flow.log_prob(z[1], cond=z[0])
         return z[0], ldj
 
-    def inverse(self, z1, _rng, *args, **kwargs):
-        z2 = self._flow.sample(rng=_rng, num_samples=z1.shape[0], cond=z1, *args, **kwargs)
+    def inverse(self, z, rng, *args, **kwargs):
+        z2 = self._flow.sample(rng=rng, num_samples=z.shape[0], cond=z, *args, **kwargs)
 
-        return jnp.concatenate((z1,z2),axis=self.dim)
+        return jnp.concatenate((z,z2),axis=self.dim)
 
         
     

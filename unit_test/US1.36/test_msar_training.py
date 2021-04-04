@@ -109,14 +109,16 @@ class Transform(nn.Module):
     @nn.compact
     def __call__(self, x):
         x = jnp.transpose(x,[0,2,3,1])
-        x = nn.Conv(self.hidden_layer,kernel_size=(3,3))(x)
+        x = nn.Conv(self.hidden_layer,kernel_size=(3,3),use_bias=False)(x)
         x, _ = survae.ActNorm(num_features=self.hidden_layer, axis=3)(x)
         x = nn.relu(x)
-        x = nn.Conv(self.hidden_layer,kernel_size=(1,1))(x)
+        x = nn.Conv(self.hidden_layer,kernel_size=(1,1),use_bias=False)(x)
         x, _ = survae.ActNorm(num_features=self.hidden_layer, axis=3)(x)
         x = nn.relu(x)
         x = nn.Conv(self.output_layer,kernel_size=(3,3),
                 kernel_init=jax.nn.initializers.zeros,bias_init=jax.nn.initializers.zeros)(x)
+        log_factor = self.param('log_factor',jax.nn.initializers.zeros,(1,1,self.output_layer))
+        x *= jnp.exp(log_factor * 3.0)
         shift, scale = np.split(x, 2, axis=-1)
         return jnp.transpose(shift,[0,3,1,2]), jnp.transpose(scale,[0,3,1,2])
 
