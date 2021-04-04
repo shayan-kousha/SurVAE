@@ -20,6 +20,16 @@ class StandardNormal(nn.Module, Distribution):
             shape = params.shape
         return random.normal(rng, (num_samples,)+shape)
 
+class StandardNormal2d(nn.Module, Distribution):
+    @classmethod
+    def log_prob(cls, x, params):
+        return sum_except_batch(norm.logpdf(x))
+
+    @classmethod
+    def sample(cls, rng, num_samples, params):
+        shape = params.shape
+        return random.normal(rng, (num_samples,)+(shape))
+
 class MeanNormal(nn.Module, Distribution):
     
     @classmethod
@@ -32,7 +42,6 @@ class MeanNormal(nn.Module, Distribution):
         if shape == None:
             shape = params.shape
         return random.normal(rng, (num_samples,)+shape) + params
-
 
 class Normal(nn.Module, Distribution):
 
@@ -49,6 +58,38 @@ class Normal(nn.Module, Distribution):
             shape = mean.shape
         return random.normal(rng, (num_samples,)+shape) * jnp.exp(log_std) + mean
 
+
+class DiagonalNormal(Distribution):
+    """A multivariate Normal with diagonal covariance."""
+    @classmethod
+    def log_prob(cls, x, params):
+        loc = params["loc"].reshape((1, -1, 1, 1))
+        log_scale = params["log_scale"].reshape((1, -1, 1, 1))
+        return sum_except_batch(norm.logpdf(x, loc, jnp.exp(jnp.tanh(log_scale))))
+
+    @classmethod
+    def sample(cls, rng, num_samples, params, shape=None):
+        loc = params["loc"].reshape((1, -1, 1, 1))
+        log_scale = params["log_scale"].reshape((1, -1, 1, 1))
+        return loc + jnp.exp(jnp.tanh(log_scale)) * random.normal(rng, (num_samples,)+(shape))
+    
+class StandardHalfNormal(Distribution):
+    """A standard half-Normal with zero mean and unit covariance."""
+
+    @classmethod
+    def log_prob(cls, x, params):
+        log_scaling = math.log(2)
+        log_base =    - 0.5 * math.log(2 * math.pi)
+        log_inner =   - 0.5 * x**2
+        log_probs = log_scaling+log_base+log_inner
+        log_probs = jnp.where(x < 0, -math.inf, log_probs)
+
+        return sum_except_batch(log_probs)
+
+    @classmethod
+    def sample(cls, rng, num_samples, params):
+        shape = params.shape
+        return jnp.abs(random.normal(rng, (num_samples,)+(shape)))
 
 class ConditionalNormal(nn.Module, Distribution):
     features: int
@@ -85,4 +126,3 @@ class ConditionalNormal(nn.Module, Distribution):
         if shape == None:
             shape = mean.shape
         return random.normal(rng, (num_samples,) + shape) * jnp.exp(log_std) + mean
-

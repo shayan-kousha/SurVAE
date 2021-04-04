@@ -5,5 +5,7 @@ from .conv1x1 import *
 from .actnorm import *
 from .elementwise import *
 from .elementwise_nonlinear import *
-from .permute import *
 from .squeeze import *
+from .unsqueeze import *
+from .affine import *
+from .permute import *
