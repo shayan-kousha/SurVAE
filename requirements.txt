@@ -8,3 +8,6 @@ flax==0.3.0
 ipdb
 tensorflow-datasets==4.2.0
 torchvision==0.8.2
+torch
+tqdm
+absl-py

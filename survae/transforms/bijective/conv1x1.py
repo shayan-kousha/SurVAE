@@ -11,30 +11,34 @@ from operator import mul
 
 class Conv1x1(nn.Module, Bijective):
     num_channels: int
-    orthogonal_init: bool = True
-    params: FrozenDict = None
+    PLU_decomposed: bool = False
+
     
 
     @staticmethod
-    def _setup(num_channels, orthogonal_init=True):
-        return partial(Conv1x1, num_channels=num_channels, orthogonal_init=orthogonal_init)   
+    def _setup(num_channels, PLU_decomposed=False):
+        return partial(Conv1x1, num_channels=num_channels, PLU_decomposed=PLU_decomposed)   
 
     def setup(self):
-        params = self.param('conv1x1_params', self.initializer)
-        self.params = params
+        self.params = self.param('conv1x1_params', self.initializer)
         return
 
     def initializer(self,rng):
-        if self.orthogonal_init == True:
-            weight = rvs(rng,self.num_channels)
+        weight = jax.scipy.linalg.qr(random.normal(key=rng, shape=(self.num_channels,self.num_channels)))[0]
+        if self.PLU_decomposed:
+            P, L, U = jax.scipy.linalg.lu(weight)
+            s = jnp.diag(U)
+            sign_s = jnp.sign(s)
+            log_s = jnp.log(jnp.abs(s))
+            L = jnp.tril(L,k=-1)
+            U = jnp.triu(U,k=1)
+            return dict(P=P, L=L, U=U, sign_s=sign_s, log_s=log_s)
         else:
-            bound = 1.0 / jnp.sqrt(self.num_channels)
-            weight = random.uniform(rng, shape=(self.num_channels,self.num_channels), minval=-bound, maxval=bound)
-        return dict(weight=weight)     
+            return dict(weight=weight)     
 
     @nn.compact
-    def __call__(self, rng, x):
-        return self.forward(rng, x)
+    def __call__(self, x, *args, **kwargs):
+        return self.forward(x, *args, **kwargs)
 
     def _conv(self, v, weight):
         
@@ -51,20 +55,46 @@ class Conv1x1(nn.Module, Bijective):
         else:
             raise ValueError(f'Got {n_feature_dims}d tensor, expected 1d, 2d, or 3d')
 
-    def _logdet(self, x_shape, weight):
+    def _get_weight(self,inverse=False):
+        if self.PLU_decomposed:
+            P = jax.lax.stop_gradient(self.params['P'])
+            L = self.params['L']
+            U = self.params['U']
+            sign_s = jax.lax.stop_gradient(self.params['sign_s'])
+            log_s = self.params['log_s']
+            shape = L.shape
+            L = jnp.tril(L,k=-1) + jnp.eye(shape[0])
+            U = jnp.triu(U,k=1) + jnp.diag(sign_s * jnp.exp(log_s))
+            if inverse:
+                inv_L = jax.scipy.linalg.inv(L)
+                inv_U = jax.scipy.linalg.inv(U)
+                inv_P = jax.scipy.linalg.inv(P)
+                return jnp.matmul(inv_U, jnp.matmul(inv_L,inv_P))
+            else:
+                return jnp.matmul(P, jnp.matmul(L,U))
+        else:
+            if inverse:
+                return jax.scipy.linalg.inv(self.params['weight'])
+            else:
+                return self.params['weight']
+
+    def _logdet(self, x_shape):
         b, c, *dims = x_shape
-        _, ldj_per_pixel = jnp.linalg.slogdet(weight)
+        if self.PLU_decomposed:
+            ldj_per_pixel = jnp.sum(self.params['log_s'])
+        else:
+            weight = self._get_weight()
+            _, ldj_per_pixel = jnp.linalg.slogdet(weight)
         ldj = ldj_per_pixel * reduce(mul, dims)
         return ldj.repeat(b)
 
-    def forward(self, rng, x):
-        z = self._conv(x, self.params['weight'])
-        ldj = self._logdet(x.shape, self.params['weight'])
+    def forward(self, x, *args, **kwargs):
+        z = self._conv(x, self._get_weight())
+        ldj = self._logdet(x.shape)
         return z, ldj
 
-    def inverse(self, rng, z):
-        weight_inv = jax.scipy.linalg.inv(self.params['weight'])
-        x = self._conv(z, weight_inv)
+    def inverse(self, z, *args, **kwargs):
+        x = self._conv(z, self._get_weight(inverse=True))
         return x
 
         

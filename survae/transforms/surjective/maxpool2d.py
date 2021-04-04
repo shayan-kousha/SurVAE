@@ -41,8 +41,8 @@ class SimpleMaxPoolSurjection2d(nn.Module, Surjective):
     #     assert isinstance(self.decoder, Distribution)
 
     @nn.compact
-    def __call__(self, rng, x):
-        return self.forward(x)
+    def __call__(self, x, *args, **kwargs):
+        return self.forward(x=x)
 
     def _squeeze(self, x):
         b,c,h,w = x.shape
@@ -94,13 +94,13 @@ class SimpleMaxPoolSurjection2d(nn.Module, Surjective):
 
         return x
 
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         z, xd, k = self._deconstruct_x(x)
         ldj_k = - math.log(4) * np.prod(z.shape[1:])
         ldj = self.decoder.log_prob(xd, params=None) + ldj_k
         return z, ldj
 
-    def inverse(self, rng, z):
+    def inverse(self, z, rng=None, *args, **kwargs):
         k = random.randint(rng, z.shape, 0, 4)
         xd = self.decoder.sample(rng, z.shape[0], params=jnp.zeros(self.latent_shape))
         x = self._construct_x(z, xd, k)

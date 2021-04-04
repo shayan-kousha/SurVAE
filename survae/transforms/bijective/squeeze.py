@@ -17,8 +17,8 @@ class Squeeze2d(nn.Module, Bijective):
         return partial(Squeeze2d, factor, ordered)
 
     @nn.compact
-    def __call__(self, rng, x):
-        return self.forward(x)
+    def __call__(self, x, *args, **kwargs):
+        return self.forward(x, *args, **kwargs)
 
     def _squeeze(self, x):
         assert len(x.shape) == 4, 'Dimension should be 4, but was {}'.format(len(x.shape))
@@ -50,11 +50,11 @@ class Squeeze2d(nn.Module, Bijective):
         x = t.reshape((batch_size, c // self.factor ** 2, h * self.factor, w * self.factor))
         return x
 
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         z = self._squeeze(x)
         ldj = jnp.zeros(x.shape[0], dtype=x.dtype)
         return z, ldj
 
-    def inverse(self, rng, z):
+    def inverse(self, z, *args, **kwargs):
         x = self._unsqueeze(z)
         return x

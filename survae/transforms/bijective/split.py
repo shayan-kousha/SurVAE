@@ -7,48 +7,32 @@ from jax import numpy as jnp, random
 
 class Split(nn.Module, Bijective):
     flow: nn.Module = None
-    decoder: nn.Module = None
     num_keep: int = None
     dim: int = 1
 
     @staticmethod
-    def _setup(flow, decoder, num_keep, dim):
-        return partial(Split, flow, decoder, num_keep, dim)        
+    def _setup(flow, num_keep, dim):
+        return partial(Split, flow,  num_keep, dim)        
 
     def setup(self):
         if self.flow == None or self.num_keep == None:
             raise TypeError()
         self._flow = self.flow()
-        if self.decoder != None:
-            self._decoder = self.decoder()
+
     
     @nn.compact
-    def __call__(self, rng, x):
-        return self.forward(rng, x)
+    def __call__(self, x, *args, **kwargs):
+        return self.forward(x, *args, **kwargs)
 
-    def forward(self, rng, x):
+    def forward(self, x, *args, **kwargs):
         z = jnp.split(x,[self.num_keep, x.shape[self.dim]],axis=self.dim)
-        params = None
-        log_prob = jnp.zeros(z[1].shape[0])
-        if self.decoder != None:
-            params = self._decoder(z[0])
-        for transform in self._flow._transforms:
-            z[1], ldj = transform(rng, z[1])
-            log_prob += ldj
-        log_prob += self._flow.base_dist.log_prob(z[1], params=params)
-        return z[:-1], log_prob
+        ldj =  self._flow.log_prob(z[1], cond=z[0])
+        return z[0], ldj
 
-    def inverse(self, rng, z1, z2=None):
-        params = None
-        if self.decoder != None:
-            params = self._decoder(z1)
-        if z2 == None:
-            if params == None:
-                params=jnp.zeros(self._flow.latent_size)
-            z2 = self._flow.base_dist.sample(rng, z1.shape[0], params=params)
-        for transform in reversed(self._flow._transforms):
-            z2 = transform.inverse(rng, z2)
-        return jnp.concatenate((z1,z2),axis=self.dim)
+    def inverse(self, z, rng, *args, **kwargs):
+        z2 = self._flow.sample(rng=rng, num_samples=z.shape[0], cond=z, *args, **kwargs)
+
+        return jnp.concatenate((z,z2),axis=self.dim)
 
         
     

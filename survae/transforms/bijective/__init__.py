@@ -8,3 +8,4 @@ from .elementwise_nonlinear import *
 from .squeeze import *
 from .unsqueeze import *
 from .affine import *
+from .permute import *
