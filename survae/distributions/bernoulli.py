@@ -22,6 +22,7 @@ class Bernoulli(nn.Module, Distribution):
         if params == None:
             params = jnp.zeros(1)
         p = nn.tanh(params*0.5) * (0.5-1e-4) + 0.5
+
         if shape == None:
             shape = p.shape
         return random.bernoulli(rng, p, (num_samples,)+shape)

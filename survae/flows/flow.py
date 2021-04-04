@@ -28,28 +28,23 @@ class Flow(nn.Module, Distribution):
         else:
             self._transforms = []
 
-    # TODO we dont need rng for bijections
     def __call__(self, x, *args, **kwargs):
         return self.log_prob(x, *args, **kwargs)
 
     def log_prob(self, x, *args, **kwargs):
         log_prob = jnp.zeros(x.shape[0])
         for i,transform in enumerate(self._transforms):
-            x, ldj = transform(x, *args, **kwargs)
+            x, ldj = transform(x=x, *args, **kwargs)
             log_prob += ldj
         log_prob += self._base_dist.log_prob(x, params=jnp.zeros(self.latent_size), *args, **kwargs)
         return log_prob
 
     def sample(self, rng, num_samples, *args, **kwargs):
 
-        # TODO instead of params we can pass latent size
-        # if params == None:
-        #     params=jnp.zeros(self.latent_size)
-        # ipdb.set_trace()
         z = self._base_dist.sample(rng=rng, num_samples=num_samples, params=jnp.zeros(self.latent_size), *args, **kwargs)
         for i, transform in enumerate(reversed(self._transforms)):
             # ipdb.set_trace()
-            z = transform.inverse(z, *args, **kwargs)
+            z = transform.inverse(z=z, rng=rng, *args, **kwargs)
         return z
 
 
@@ -78,6 +73,43 @@ class SimpleRealNVP(Flow):
         x = self.base_dist.sample(rng, num_samples, jnp.zeros(self.latent_size))
         for layer in reversed(self._transforms):
             x = layer.inverse(x)
+        # TODO add log_det_J_layer
+
+        return x
+
+class AbsFlow(Flow):
+    base_dist: Distribution = None
+    transforms: Union[List[Transform],None] = None
+    latent_size: Union[Tuple[int],None] = None
+
+    def __call__(self,  x, *args, **kwargs):
+        return self.log_prob( x=x, *args, **kwargs)
+
+    def setup(self):
+        if self.base_dist == None:
+            raise TypeError()
+        if type(self.transforms) == list:
+            self._transforms = [transform() for transform in self.transforms]
+        else:
+            self._transforms = []
+
+
+    @staticmethod
+    def _setup(base_dist, transforms, latent_size):
+        return partial(AbsFlow, base_dist=base_dist, transforms=transforms, latent_size=latent_size)
+
+    def log_prob(self,  x, *args, **kwargs):
+        log_det_J, z =  jnp.zeros(x.shape[0]), x
+        for layer in self._transforms:
+            x, log_det_J_layer = layer(x=x, *args, **kwargs)
+            log_det_J += log_det_J_layer
+
+        return self.base_dist.log_prob(x, params=None) + log_det_J
+
+    def sample(self, rng, num_samples, *args, **kwargs):
+        x = self.base_dist.sample(rng=rng, num_samples=num_samples, params=jnp.zeros(self.latent_size))
+        for layer in reversed(self._transforms):
+            x = layer.inverse(rng=rng, z=x)
         # TODO add log_det_J_layer
 
         return x
