@@ -88,8 +88,12 @@ class SimpleMaxPoolSurjection2d(nn.Module, Surjective):
         xr = jnp.expand_dims(z, axis=-1)-xds
         mask = self._k_mask(k)
         xs = jnp.zeros(z.shape+(4,), dtype=z.dtype)
-        xs.masked_scatter_(mask, z)
-        xs.masked_scatter_(~mask, xr)
+
+        indices = np.where(mask)
+        xs = jax.ops.index_update(xs, jax.ops.index[indices[0], indices[1], indices[2], indices[3], indices[4]], z.flatten())
+        indices = np.where(~mask)
+        xs = jax.ops.index_update(xs, jax.ops.index[indices[0], indices[1], indices[2], indices[3], indices[4]], xr.flatten())
+
         x = self._unsqueeze(xs)
 
         return x
