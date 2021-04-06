@@ -1,7 +1,8 @@
 from flax import linen as nn
-from typing import Any, Sequence
+from typing import Any, Sequence, Iterable, Optional, Tuple, Union
 from functools import partial
 from survae.distributions import Distribution
+from survae.nn import ConvLSTM
 from jax import numpy as jnp, random
 import jax
 import ipdb
@@ -11,21 +12,23 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
     # training: bool
     # features: num of features of base dist parameters per dim
     features: int
-    latent_size: tuple
-    kernel_size: tuple
+    latent_size: Iterable[int]
+    kernel_size: Iterable[int]
+    dilation_size: Optional[Iterable[int]] = None
     hidden_size: int = 32
     num_layers: int = 1
     base_dist: Distribution = None
 
     @staticmethod
-    def _setup(base_dist, features, latent_size, kernel_size, hidden_size=32, num_layers=1):
+    def _setup(base_dist, features, latent_size, kernel_size, hidden_size=32, num_layers=1, dilation_size=None):
         return partial(AutoregressiveConvLSTM, 
                         base_dist=base_dist, 
                         kernel_size=kernel_size, 
                         features=features, 
                         latent_size=latent_size, 
                         num_layers=num_layers,
-                        hidden_size=hidden_size)
+                        hidden_size=hidden_size,
+                        dilation_size=dilation_size)
 
     def setup(self):
         self.conv_in = nn.Conv(features=self.hidden_size, kernel_size=self.kernel_size)
@@ -34,7 +37,7 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
         self.conv_out = nn.Conv(features=self.features, kernel_size=self.kernel_size)
 
         self.lstm = [nn.ConvLSTM(features=self.hidden_size, 
-                        kernel_size=self.kernel_size) for _ in range(self.num_layers)]
+                        kernel_size=self.kernel_size, dilation_size=self.dilation_size) for _ in range(self.num_layers)]
 
         if self.base_dist == None:
             raise TypeError()
