@@ -139,6 +139,7 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
         raise
     
     kernel_sizes = [5,5,3,3,3]
+    dilation_sizes = [1,1,1,1,1]
     for i in range(layer):
         bijections += [survae.Squeeze2d._setup(2)]
         C *= 2**2
@@ -155,6 +156,7 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
                 _base_dist = survae.AutoregressiveConvLSTM._setup(base_dist=survae.Normal,
                                                                 features=2,
                                                                 kernel_size=(kernel_sizes[i],kernel_sizes[i]),
+                                                                dilation_size=(dilation_sizes[i],dilation_sizes[i]),
                                                                 latent_size=(C,H,W),
                                                                 num_layers=3)
             else:

@@ -11,7 +11,7 @@ from jax import lax
 from jax import random
 
 
-
+Dtype = Any
 
 class ConvLSTM(RNNCellBase):
   r"""A convolutional LSTM cell.

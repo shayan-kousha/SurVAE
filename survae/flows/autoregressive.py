@@ -36,7 +36,7 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
         self.conv_cond2 = nn.Conv(features=4, kernel_size=(5,5))
         self.conv_out = nn.Conv(features=self.features, kernel_size=self.kernel_size)
 
-        self.lstm = [nn.ConvLSTM(features=self.hidden_size, 
+        self.lstm = [ConvLSTM(features=self.hidden_size, 
                         kernel_size=self.kernel_size, dilation_size=self.dilation_size) for _ in range(self.num_layers)]
 
         if self.base_dist == None:
