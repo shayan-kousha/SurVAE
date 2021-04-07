@@ -467,16 +467,17 @@ def train_max_pooling():
     def loss_fn(params, batch, rng):
         return -jnp.sum(pooling_model.apply(params, batch, rng, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
 
-    @jax.jit
-    def train_step(optimizer, batch, rng):
+    @partial(jax.jit, static_argnums=3)
+    def train_step(optimizer, batch, rng, epoch):
         grad_fn = jax.value_and_grad(loss_fn)
         loss_val, grad = grad_fn(optimizer.target, batch, rng)
-        optimizer = optimizer.apply_gradient(grad)
+        lr = min(1, epoch/args.warmup) * args.lr
+        optimizer = optimizer.apply_gradient(grad, learning_rate=lr)
         return optimizer, loss_val
 
     @jax.jit
     def eval_step(params, batch, rng):
-        return -jnp.sum(pooling_model.apply(params, rng, batch, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
+        return -jnp.sum(pooling_model.apply(params, batch, rng, method=pooling_model.log_prob)) / (math.log(2) *  np.prod(batch.shape))
 
     # @jax.jit
     def sample(params, rng, num_samples, epoch, exp_name):
@@ -497,7 +498,7 @@ def train_max_pooling():
         validation_loss = []
         for x in train_loader:
             rng, key = random.split(rng)
-            optimizer, loss_val = train_step(optimizer, np.array(x), rng)
+            optimizer, loss_val = train_step(optimizer, np.array(x), rng, epoch)
             train_loss.append(loss_val)
         
         for x in eval_loader:
