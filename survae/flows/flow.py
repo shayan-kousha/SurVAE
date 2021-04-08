@@ -74,6 +74,77 @@ class SimpleRealNVP(Flow):
 
         return x
 
+class SplitFlow(Flow):
+    base_dist: Distribution = None
+    transforms: Union[List[Transform],None] = None
+    latent_size: Union[Tuple[int],None] = None
+
+    def __call__(self, x, *args, **kwargs):
+        return self.log_prob(x, *args, **kwargs)
+
+    @staticmethod
+    def _setup(base_dist, transforms, latent_size):
+        return partial(SplitFlow, base_dist, transforms, latent_size)
+
+    def log_prob(self, x, *args, **kwargs):
+        log_det_J, z =  jnp.zeros(x.shape[0]), x
+        
+        for layer in self._transforms:
+            z_shape = z.shape
+            if isinstance(layer, AffineCoupling):
+                z = z.reshape((z.shape[0], np.prod(z.shape[1:])))
+
+            z, log_det_J_layer = layer(z, *args, **kwargs)
+
+            if isinstance(layer, AffineCoupling):
+                z = z.reshape(z_shape)
+
+            log_det_J += log_det_J_layer
+
+        return self.base_dist.log_prob(z, None) + log_det_J
+
+    def sample(self, rng, num_samples, *args, **kwargs):
+        x = self.base_dist.sample(rng, num_samples, jnp.zeros(self.latent_size))
+        for layer in reversed(self._transforms):
+            x_shape = x.shape
+            if isinstance(layer, AffineCoupling):
+                x = x.reshape((x.shape[0], np.prod(x.shape[1:])))
+
+            x = layer.inverse(x)
+
+            if isinstance(layer, AffineCoupling):
+                x = x.reshape(x_shape)
+
+        return x
+
+class ProNF(Flow):
+    base_dist: Distribution = None
+    transforms: Union[List[Transform],None] = None
+    latent_shape: Union[Tuple[int],None] = None
+
+    def __call__(self, x, *args, **kwargs):
+        return self.log_prob(x, *args, **kwargs)
+
+    @staticmethod
+    def _setup(base_dist, transforms, latent_shape):
+        return partial(ProNF, base_dist, transforms, latent_shape)
+
+    def log_prob(self, x, *args, **kwargs):
+        log_det_J, z =  jnp.zeros(x.shape[0]), x
+        
+        for layer in self._transforms:
+            z, log_det_J_layer = layer(z, *args, **kwargs)
+            log_det_J += log_det_J_layer
+
+        return self.base_dist.log_prob(z, None) + log_det_J
+
+    def sample(self, rng, num_samples, *args, **kwargs):
+        x = self.base_dist.sample(rng, num_samples, jnp.zeros(self.latent_shape))
+        for layer in reversed(self._transforms):
+            x = layer.inverse(x, rng, *args, **kwargs)
+
+        return x
+
 class AbsFlow(Flow):
     base_dist: Distribution = None
     transforms: Union[List[Transform],None] = None
@@ -143,20 +214,19 @@ class PoolFlow(Flow):
 
 class PoolFlowExperiment(Flow):
     # decoder: nn.Module = None
-    current_shape:Tuple[int] = None
+    current_shape: Tuple[int] = None
     base_dist: Distribution = None
     transforms: Union[List[Transform],None] = None
     latent_size: Union[Tuple[int],None] = None
 
     @staticmethod
     def _setup(current_shape, base_dist, transforms, latent_size):
-        return partial(PoolFlow, current_shape, base_dist, transforms, latent_size)
+        return partial(PoolFlowExperiment, current_shape, base_dist, transforms, latent_size)
 
     def setup(self):
         if self.base_dist == None:
             raise TypeError()
         if type(self.transforms) == list:
-            # self._transforms = [transform() for transform in self.transforms]
             self._transforms = [transform() for transform in self.transforms]
         else:
             self._transforms = []
@@ -186,7 +256,6 @@ class PoolFlowExperiment(Flow):
             x = layer.inverse(x, rng, *args, **kwargs)
 
         return x
-
 
 class MultiScaleFlow(Flow):
     base_dist: Distribution = None

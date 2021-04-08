@@ -24,6 +24,6 @@ class Resize():
         return resize(image, size=self.size, interpolation=self.interpolation)
 
 
-def CIFAR10_resized(size=(32, 32), interpolation='bicubic'):
-	cifar = CIFAR10SURVAE(pil_transforms=[Resize(size=size, interpolation=interpolation)])
+def CIFAR10_resized(size=(32, 32), interpolation='bicubic', train_pil_transforms=[]):
+	cifar = CIFAR10SURVAE(pil_transforms=[Resize(size=size, interpolation=interpolation)], train_pil_transforms=train_pil_transforms)
 	return cifar
