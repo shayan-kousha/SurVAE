@@ -14,14 +14,15 @@ from functools import partial
 from survae.data.loaders import CIFAR10SURVAE, CIFAR10_resized
 import math
 from torchvision.transforms import RandomHorizontalFlip, Pad, RandomAffine, CenterCrop
-
-from survae.distributions import StandardNormal, StandardNormal2d
+from torchvision.transforms.functional import resize
+from survae.distributions import StandardNormal, StandardNormal2d, Normal
 from survae.data.loaders import MNIST, CIFAR10_OLD, disp_imdata, logistic
 
 from survae.transforms import Conv1x1, ConditionalTransform, ConditionalCoupling, Coupling, AffineCoupling, UniformDequantization, Split, Squeeze2d
 from survae.flows import SplitFlow, ProNF
 import numpy as np
 from flax.training import checkpoints
+from PIL import Image
 
 
 parser = argparse.ArgumentParser()
@@ -32,6 +33,7 @@ parser.add_argument('--augmentation', type=str, default=None)
 parser.add_argument('--dataset', type=str, default='cifar10')
 parser.add_argument('--num_bits', type=int, default=8)
 parser.add_argument('--resume', action='store_true', default=False)
+parser.add_argument('--interpolation' , type=str, default='bicubic')
 
 args = parser.parse_args()
 
@@ -82,8 +84,7 @@ def get_data(args):
     # Dataset
     data_shape = (3,16,16)
     train_pil_transforms = get_augmentation(args.augmentation, 'cifar10', data_shape)
-    # dataset = CIFAR10SURVAE(num_bits=args.num_bits, pil_transforms=train_pil_transforms)
-    dataset =  CIFAR10_resized(size=data_shape[1:], train_pil_transforms=train_pil_transforms)
+    dataset =  CIFAR10_resized(size=data_shape[1:], interpolation=args.interpolation, train_pil_transforms=train_pil_transforms)
 
     # Data Loader
     train_loader = DataLoader(
@@ -103,8 +104,21 @@ def get_data(args):
 
     return train_loader, eval_loader, data_shape
 
+# TODO update it to use different interpolation
+def resize_gt(original_gt_image, gt_size, interpolation=Image.BICUBIC):
+    final_gt_images = None
+    for i in range(original_gt_image.shape[0]):
+        resized_gt = resize(Image.fromarray(np.array(original_gt_image[i, :, :, :]).transpose((1, 2, 0)).astype(np.uint8)) , size=gt_size, interpolation=interpolation)
+        np_resized_gt = np.expand_dims(np.array(resized_gt).transpose((2, 0, 1)), axis=0) 
 
-def train_real_nvp(monitor_every=10):
+        if final_gt_images is None:
+            final_gt_images = np_resized_gt
+        else:
+            final_gt_images = np.concatenate((final_gt_images, np_resized_gt), axis=0)
+        
+    return final_gt_images
+
+def train_pro_nf(monitor_every=10):
     hidden_nodes = 1024
     learning_rate = 1e-4
     epoch = 500
@@ -152,8 +166,10 @@ def train_real_nvp(monitor_every=10):
 
     rng = random.PRNGKey(0)
     rng, key = random.split(rng)
-    real_nvp = ProNF(StandardNormal2d, transforms, latent_shape=output_image_shape)
-    params = real_nvp.init(key, dummy, rng)
+    pro_nf = ProNF(Normal, transforms, latent_shape=output_image_shape)
+    gt_size = (dummy.shape[2] // 2 , dummy.shape[3] // 2)
+    gt_image = resize_gt(dummy, gt_size)
+    params = pro_nf.init(key, dummy, rng=rng, gt_image=gt_image)
     optimizer_def = optim.Adam(learning_rate=learning_rate)
     optimizer = optimizer_def.create(params)
 
@@ -162,19 +178,19 @@ def train_real_nvp(monitor_every=10):
         optimizer = checkpoints.restore_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer)
 
     @jax.jit
-    def loss_fn(params, batch, rng):
-        return -jnp.sum(real_nvp.apply(params, batch, rng, method=real_nvp.log_prob)) / (math.log(2) *  np.prod(batch.shape))
+    def loss_fn(params, batch, gt_image, rng):
+        return -jnp.sum(pro_nf.apply(params, batch, rng=rng, gt_image=gt_image, method=pro_nf.log_prob)) / (math.log(2) *  np.prod(batch.shape))
 
 
     @jax.jit
-    def train_step(optimizer, batch, rng):
+    def train_step(optimizer, batch, gt_image, rng):
         grad_fn = jax.value_and_grad(loss_fn)
-        loss_val, grad = grad_fn(optimizer.target, batch, rng)
+        loss_val, grad = grad_fn(optimizer.target, batch, gt_image, rng)
         optimizer = optimizer.apply_gradient(grad)
         return optimizer, loss_val
 
-    def sample(params, rng, num_samples, epoch, dir_name):
-        samples = real_nvp.apply(params, rng, num_samples, method=real_nvp.sample)
+    def sample(params, rng, num_samples, epoch, dir_name, gt_image):
+        samples = pro_nf.apply(params, rng, num_samples, gt_image, method=pro_nf.sample)
         samples = jnp.transpose(samples.reshape((num_samples,)+image_shape), (0, 2, 3, 1)).astype(int)
         disp_imdata(samples, samples.shape[1:], [5, 5])
 
@@ -190,18 +206,20 @@ def train_real_nvp(monitor_every=10):
         validation_loss = []
         for x in train_loader:
             rng, key = random.split(rng)
-            optimizer, loss_val = train_step(optimizer, jnp.round(jnp.array(x), 4), rng)
+            gt_image = resize_gt(x, gt_size)
+            optimizer, loss_val = train_step(optimizer, jnp.round(jnp.array(x), 4), gt_image, rng)
             train_loss.append(loss_val)
         
         if e % 5 == 0:
             for x in eval_loader:
                 rng, key = random.split(rng)
-                loss_val = loss_fn(optimizer.target, jnp.array(x), rng)
+                gt_image = resize_gt(x, gt_size)
+                loss_val = loss_fn(optimizer.target, jnp.array(x), gt_image, rng)
                 validation_loss.append(loss_val)
         
-            sample(optimizer.target, rng, 25, e, dir_name)
-            checkpoints.save_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer, e, keep=3)
+            sample(optimizer.target, rng, 25, e, dir_name, gt_image)
+            # checkpoints.save_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer, e, keep=3)
             print('epoch %s/%s:' % (e+1, epoch), 'loss = %.3f' % jnp.mean(jnp.array(train_loss)), 'val_loss = %0.3f' % jnp.mean(jnp.array(validation_loss)))
 
 if __name__ == "__main__":
-  train_real_nvp()
+  train_pro_nf()

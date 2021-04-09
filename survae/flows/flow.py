@@ -129,17 +129,27 @@ class ProNF(Flow):
     def _setup(base_dist, transforms, latent_shape):
         return partial(ProNF, base_dist, transforms, latent_shape)
 
-    def log_prob(self, x, *args, **kwargs):
+    def log_prob(self, x, gt_image, *args, **kwargs):
         log_det_J, z =  jnp.zeros(x.shape[0]), x
         
         for layer in self._transforms:
             z, log_det_J_layer = layer(z, *args, **kwargs)
             log_det_J += log_det_J_layer
 
-        return self.base_dist.log_prob(z, None) + log_det_J
+        mean = jnp.mean(gt_image, axis=0)
+        # mean = jnp.zeros(mean.shape)
+        log_std = jnp.zeros(mean.shape)
+        params = jnp.concatenate((mean, log_std), axis=-1)
 
-    def sample(self, rng, num_samples, *args, **kwargs):
-        x = self.base_dist.sample(rng, num_samples, jnp.zeros(self.latent_shape))
+        return self.base_dist.log_prob(z, params) + log_det_J
+
+    def sample(self, rng, num_samples, gt_image, *args, **kwargs):
+        mean = jnp.mean(gt_image, axis=0)
+        # mean = jnp.zeros(mean.shape)
+        log_std = jnp.zeros(mean.shape)
+        params = jnp.concatenate((mean, log_std), axis=-1)
+        
+        x = self.base_dist.sample(rng, num_samples, params)
         for layer in reversed(self._transforms):
             x = layer.inverse(x, rng, *args, **kwargs)
 
