@@ -1,7 +1,7 @@
 import sys
 sys.path.append(".")
 
-from survae.data.loaders import CIFAR10_resized
+from survae.data.loaders import CIFAR10_resized, CIFAR10Downsampled
 
 cifar = CIFAR10_resized()
 
@@ -19,3 +19,9 @@ try:
 	cifar = CIFAR10_resized(size=(4, 4), interpolation='sldgkflkjg')
 except ValueError:
 	print("Successfully raised ValueError for incorrect interpolation mode.")
+
+
+cifar = CIFAR10Downsampled(highres_size=(32, 32), lowres_size=(16, 16), interpolation='bicubic', mode='train')
+highres = cifar[0][0]
+lowres = cifar[0][1]
+print(highres.shape, lowres.shape)
