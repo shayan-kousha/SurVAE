@@ -2,27 +2,35 @@ import sys
 import os
 import argparse
 sys.path.append(".")
+
+
 from flax import linen as nn
+from typing import Callable
+from functools import partial
+from survae.distributions import StandardNormal
+
+
+
 from flax import optim
 from torch.utils.data import DataLoader
 import jax
 import jax.numpy as jnp
 from jax import random
-from typing import Callable
 import matplotlib.pyplot as plt
-from functools import partial
-from survae.data.loaders import CIFAR10SURVAE, CIFAR10_resized
+from survae.data.loaders import CIFAR10_resized
 import math
 from torchvision.transforms import RandomHorizontalFlip, Pad, RandomAffine, CenterCrop
 from torchvision.transforms.functional import resize
-from survae.distributions import StandardNormal, StandardNormal2d, Normal
-from survae.data.loaders import MNIST, CIFAR10_OLD, disp_imdata, logistic
+from survae.distributions import StandardNormal2d, Normal
+from survae.data.loaders import disp_imdata
 
-from survae.transforms import Conv1x1, ConditionalTransform, ConditionalCoupling, Coupling, AffineCoupling, UniformDequantization, Split, Squeeze2d
+from survae.transforms import Conv1x1, ConditionalCoupling, Coupling, AffineCoupling, UniformDequantization, Split, Squeeze2d
 from survae.flows import SplitFlow, ProNF
 import numpy as np
 from flax.training import checkpoints
 from PIL import Image
+from tensorflow.io import gfile
+from flax import serialization
 
 
 parser = argparse.ArgumentParser()
@@ -34,6 +42,8 @@ parser.add_argument('--dataset', type=str, default='cifar10')
 parser.add_argument('--num_bits', type=int, default=8)
 parser.add_argument('--resume', action='store_true', default=False)
 parser.add_argument('--interpolation' , type=str, default='bicubic')
+parser.add_argument('--image_size', nargs='+', required=True)
+parser.add_argument('--smallest', action='store_true', default=False)
 
 args = parser.parse_args()
 
@@ -82,7 +92,7 @@ def get_augmentation(augmentation, dataset, data_shape):
 
 def get_data(args):
     # Dataset
-    data_shape = (3,16,16)
+    data_shape = (3, int(args.image_size[0]), int(args.image_size[0]))
     train_pil_transforms = get_augmentation(args.augmentation, 'cifar10', data_shape)
     dataset =  CIFAR10_resized(size=data_shape[1:], interpolation=args.interpolation, train_pil_transforms=train_pil_transforms)
 
@@ -118,55 +128,99 @@ def resize_gt(original_gt_image, gt_size, interpolation=Image.BICUBIC):
         
     return final_gt_images
 
-def train_pro_nf(monitor_every=10):
+def get_model(image_shape):
     hidden_nodes = 1024
+    num_layers = 4
+    transforms = []
+
+    for i, size in enumerate(args.image_size):
+        output_latent_shape = (image_shape[0]*3, int(size)//2, int(size)//2)
+        output_image_shape = (image_shape[0], int(size)//2, int(size)//2)
+
+        split_flow_transforms = []
+        split_flow_transforms = [AffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_latent_shape)), _reverse_mask=layer % 2 != 0) for layer in range(num_layers)]
+        # for layer in range(4):
+        #     split_flow_transforms.extend([
+        #                 Conv1x1._setup(image_shape[0]*3),
+        #                 ConditionalCoupling._setup(in_channels=image_shape[0]*3,
+        #                                     num_context=32,
+        #                                     num_blocks=1,
+        #                                     mid_channels=64,
+        #                                     depth=10,
+        #                                     growth=64,
+        #                                     dropout=0.0,
+        #                                     gated_conv=True)
+        #             ])
+        split_flow = SplitFlow._setup(StandardNormal2d, split_flow_transforms, output_latent_shape)
+
+        transforms.append(UniformDequantization._setup(num_bits=args.num_bits))
+        transforms.append(Squeeze2d._setup())
+        for layer in range(num_layers):
+            transforms.extend([
+                        Conv1x1._setup(image_shape[0]*4),
+                        Coupling._setup(in_channels=image_shape[0]*4,
+                                num_blocks=1,
+                                mid_channels=64,
+                                depth=10,
+                                growth=64,
+                                dropout=0.0,
+                                gated_conv=True)
+                    ])
+        transforms.append(Split._setup(flow=split_flow, num_keep=3, dim=1))
+    
+    if args.smallest or (len(args.image_size) > 1 and i == len(args.image_size) - 1):
+        base_dist = StandardNormal2d
+    else:
+        base_dist = Normal
+
+    return ProNF(base_dist, transforms, latent_shape=output_image_shape)
+
+def restore(ckpt_dir, optimizer, prefix='checkpoint_'):
+    optimizer_ = optimizer
+    param_counter = 0
+    for i, size in enumerate(args.image_size):
+        dir_name = "size_{}_{}_{}".format(str(3), size, size) if len(args.image_size) else "_".join(args.image_size)
+
+        glob_path = os.path.join(ckpt_dir + dir_name, f'{prefix}*')
+        checkpoint_files = checkpoints.natural_sort(gfile.glob(glob_path))
+        ckpt_tmp_path = checkpoints._checkpoint_path(ckpt_dir, 'tmp', prefix)
+        checkpoint_files = [f for f in checkpoint_files if f != ckpt_tmp_path]
+        ckpt_path = checkpoint_files[-1]
+
+        with gfile.GFile(ckpt_path, 'rb') as fp:
+            checkpoint_contents = fp.read()
+            params = serialization.msgpack_restore(checkpoint_contents)
+            layer_numbers = [int(key.split("_")[-1]) for key in params['target']['params'].keys()]
+            last_layer_number = np.max(layer_numbers) + 1
+            temp_params = optimizer_.state_dict()
+
+            for key, value in params['target']['params'].items():
+                key_split = key.split("_")
+                key_split[-1] = str(int(key_split[-1]) + i*last_layer_number)
+
+                new_key = "_".join(key_split)
+                temp_params['target']['params'][new_key] = value
+                param_counter += 1
+
+            optimizer_ = serialization.from_state_dict(optimizer_, temp_params)
+
+    assert param_counter == len(optimizer.state_dict()['target']['params'].keys())
+
+    return optimizer_
+
+def train_pro_nf(monitor_every=10):
     learning_rate = 1e-4
     epoch = 500
-    num_layers = 4
-    num_samples = 50
     train_loader, eval_loader, data_shape = get_data(args)
     dummy = jnp.array(next(iter(train_loader)))[:2]
     image_shape = dummy.shape[1:]
-    output_image_shape = (image_shape[0], image_shape[1]//2, image_shape[2]//2)
-    output_latent_shape = (image_shape[0]*3, image_shape[1]//2, image_shape[2]//2)
 
-    dir_name = "size_" + str(image_shape).replace('(', '').replace(')', '').replace(', ', '_')
+    dir_name = "size_{}_{}_{}".format(str(3), str(image_shape[-1]), str(image_shape[-1])) if len(args.image_size) == 1 else "size_" + "_".join(args.image_size)
     output_nodes = np.prod(image_shape)
-
-    split_flow_transforms = []
-    split_flow_transforms = [AffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_latent_shape)), _reverse_mask=layer % 2 != 0) for layer in range(num_layers)]
-    # for layer in range(4):
-    #     split_flow_transforms.extend([
-    #                 Conv1x1._setup(image_shape[0]*3),
-    #                 ConditionalCoupling._setup(in_channels=image_shape[0]*3,
-    #                                     num_context=32,
-    #                                     num_blocks=1,
-    #                                     mid_channels=64,
-    #                                     depth=10,
-    #                                     growth=64,
-    #                                     dropout=0.0,
-    #                                     gated_conv=True)
-    #             ])
-    split_flow = SplitFlow._setup(StandardNormal2d, split_flow_transforms, output_latent_shape)
-    transforms = []
-    transforms.append(UniformDequantization._setup(num_bits=args.num_bits))
-    transforms.append(Squeeze2d._setup())
-    for layer in range(num_layers):
-        transforms.extend([
-                    Conv1x1._setup(image_shape[0]*4),
-                    Coupling._setup(in_channels=image_shape[0]*4,
-                             num_blocks=1,
-                             mid_channels=64,
-                             depth=10,
-                             growth=64,
-                             dropout=0.0,
-                             gated_conv=True)
-                ])
-    transforms.append(Split._setup(flow=split_flow, num_keep=3, dim=1))
 
     rng = random.PRNGKey(0)
     rng, key = random.split(rng)
-    pro_nf = ProNF(Normal, transforms, latent_shape=output_image_shape)
+    pro_nf = get_model(image_shape)
     gt_size = (dummy.shape[2] // 2 , dummy.shape[3] // 2)
     gt_image = resize_gt(dummy, gt_size)
     params = pro_nf.init(key, dummy, rng=rng, gt_image=gt_image)
@@ -175,12 +229,18 @@ def train_pro_nf(monitor_every=10):
 
     if args.resume:
         print('resuming')
-        optimizer = checkpoints.restore_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer)
+        if len(args.image_size) == 1:
+            optimizer = checkpoints.restore_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer)
+        else:
+            if os.path.exists("./unit_test/US1.48/checkpoints/" + dir_name):
+                import ipdb;ipdb.set_trace()
+                optimizer = checkpoints.restore_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer)
+            else:
+                optimizer = restore("./unit_test/US1.48/checkpoints/", optimizer)
 
     @jax.jit
     def loss_fn(params, batch, gt_image, rng):
         return -jnp.sum(pro_nf.apply(params, batch, rng=rng, gt_image=gt_image, method=pro_nf.log_prob)) / (math.log(2) *  np.prod(batch.shape))
-
 
     @jax.jit
     def train_step(optimizer, batch, gt_image, rng):
@@ -218,7 +278,7 @@ def train_pro_nf(monitor_every=10):
                 validation_loss.append(loss_val)
         
             sample(optimizer.target, rng, 25, e, dir_name, gt_image)
-            # checkpoints.save_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer, e, keep=3)
+            checkpoints.save_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer, e, keep=3)
             print('epoch %s/%s:' % (e+1, epoch), 'loss = %.3f' % jnp.mean(jnp.array(train_loss)), 'val_loss = %0.3f' % jnp.mean(jnp.array(validation_loss)))
 
 if __name__ == "__main__":

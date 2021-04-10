@@ -1,6 +1,6 @@
 from typing import Any, Optional, List, Union, Tuple
 from flax import linen as nn
-from survae.distributions import Distribution
+from survae.distributions import Distribution, Normal
 from survae.transforms import Transform
 from survae.transforms import *
 from jax import numpy as jnp, random
@@ -136,18 +136,22 @@ class ProNF(Flow):
             z, log_det_J_layer = layer(z, *args, **kwargs)
             log_det_J += log_det_J_layer
 
-        mean = jnp.mean(gt_image, axis=0)
-        # mean = jnp.zeros(mean.shape)
-        log_std = jnp.zeros(mean.shape)
-        params = jnp.concatenate((mean, log_std), axis=-1)
+        params = None
+        if self.base_dist == Normal:
+            mean = jnp.mean(gt_image, axis=0)
+            # mean = jnp.zeros(mean.shape)
+            log_std = jnp.zeros(mean.shape)
+            params = jnp.concatenate((mean, log_std), axis=-1)
 
         return self.base_dist.log_prob(z, params) + log_det_J
 
     def sample(self, rng, num_samples, gt_image, *args, **kwargs):
-        mean = jnp.mean(gt_image, axis=0)
-        # mean = jnp.zeros(mean.shape)
-        log_std = jnp.zeros(mean.shape)
-        params = jnp.concatenate((mean, log_std), axis=-1)
+        params = jnp.zeros(self.latent_shape)
+        if self.base_dist == Normal:
+            mean = jnp.mean(gt_image, axis=0)
+            # mean = jnp.zeros(mean.shape)
+            log_std = jnp.zeros(mean.shape)
+            params = jnp.concatenate((mean, log_std), axis=-1)
         
         x = self.base_dist.sample(rng, num_samples, params)
         for layer in reversed(self._transforms):
