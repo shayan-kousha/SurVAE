@@ -111,10 +111,10 @@ class Transform(nn.Module):
         x = jnp.transpose(x,[0,2,3,1])
         x = nn.Conv(self.hidden_layer,kernel_size=(3,3),use_bias=False)(x)
         x, _ = survae.ActNorm(num_features=self.hidden_layer, axis=3)(x)
-        x = nn.relu(x)
+        x = nn.leaky_relu(x)
         x = nn.Conv(self.hidden_layer,kernel_size=(1,1),use_bias=False)(x)
         x, _ = survae.ActNorm(num_features=self.hidden_layer, axis=3)(x)
-        x = nn.relu(x)
+        x = nn.leaky_relu(x)
         x = nn.Conv(self.output_layer,kernel_size=(3,3),
                 kernel_init=jax.nn.initializers.zeros,bias_init=jax.nn.initializers.zeros)(x)
         log_factor = self.param('log_factor',jax.nn.initializers.zeros,(1,1,self.output_layer))
@@ -139,7 +139,7 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
         raise
     
     kernel_sizes = [5,5,3,3,3]
-    dilation_sizes = [1,1,1,1,1]
+    dilation_sizes = [2,1,1,1,1]
     for i in range(layer):
         bijections += [survae.Squeeze2d._setup(2)]
         C *= 2**2
