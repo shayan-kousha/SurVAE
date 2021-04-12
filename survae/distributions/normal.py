@@ -46,13 +46,13 @@ class MeanNormal(nn.Module, Distribution):
 class Normal(nn.Module, Distribution):
 
     @classmethod
-    def log_prob(cls, x, params, axis=-1, *args, **kwargs):
+    def log_prob(cls, x, params, axis=1, *args, **kwargs):
         mean, log_std = jnp.split(params, 2, axis=axis)
         return sum_except_batch(norm.logpdf(x, loc=mean, scale=jnp.exp(log_std)))
 
 
     @classmethod
-    def sample(cls, rng, num_samples, params, shape=None, axis=-1, *args, **kwargs):
+    def sample(cls, rng, num_samples, params, shape=None, axis=1, *args, **kwargs):
         mean, log_std = jnp.split(params, 2, axis=axis)
         if shape == None:
             shape = mean.shape

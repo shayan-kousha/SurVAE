@@ -34,7 +34,8 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
         self.conv_in = nn.Conv(features=self.hidden_size, kernel_size=self.kernel_size)
         self.conv_cond1 = nn.Conv(features=self.hidden_size, kernel_size=(5,5))
         self.conv_cond2 = nn.Conv(features=4, kernel_size=(5,5))
-        self.conv_out = nn.Conv(features=self.features, kernel_size=self.kernel_size)
+        self.conv_out = nn.Conv(features=self.features, kernel_size=(3,3),
+                            kernel_init=jax.nn.initializers.zeros,bias_init=jax.nn.initializers.zeros)
 
         self.lstm = [ConvLSTM(features=self.hidden_size, 
                         kernel_size=self.kernel_size, dilation_size=self.dilation_size) for _ in range(self.num_layers)]
@@ -52,9 +53,6 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
         return log_prob
 
     def sample(self, rng, num_samples, params=None,  cond=None, *args, **kwargs):
-        if cond != None:
-            assert num_samples == cond.shape[0]
-            assert self.latent_size == cond.shape[1:]
         x = jnp.zeros((num_samples,)+self.latent_size)
         _, x = self.autoregressive(x, rng=rng, cond=cond)
         return x
@@ -84,9 +82,10 @@ class AutoregressiveConvLSTM(nn.Module, Distribution):
             if type(rng) != type(None):
                 rng, _ = random.split(rng)
                 x = jax.ops.index_update(x, jax.ops.index[:,:,:,c], 
-                            self.base_dist.sample(rng=rng,num_samples=1,params=params).squeeze(axis=(0,-1)))
+                            self.base_dist.sample(rng=rng,num_samples=shape[0],
+                            params=params,shape=shape[1:-1]+(1,),axis=-1).squeeze(axis=-1))
             else:
-                log_prob += self.base_dist.log_prob(x=jnp.expand_dims(x[:,:,:,c],axis=-1), params=params)
+                log_prob += self.base_dist.log_prob(x=jnp.expand_dims(x[:,:,:,c],axis=-1), params=params,axis=-1)
             _x = jnp.expand_dims(x[:,:,:,c],axis=-1)
 
         x = jnp.transpose(x,(0,3,1,2))

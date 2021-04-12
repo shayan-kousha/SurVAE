@@ -5,3 +5,4 @@ venv/*
 survae/data/datasets
 **/results*
 **/ckpt*
+**/test*

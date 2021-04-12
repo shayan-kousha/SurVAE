@@ -9,3 +9,4 @@ from .squeeze import *
 from .unsqueeze import *
 from .affine import *
 from .permute import *
+from .additive_coupling import *

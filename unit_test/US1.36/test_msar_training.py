@@ -134,12 +134,12 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
     elif FLAGS.activation == "exp_tanh":
         activation = lambda x: jnp.exp(jnp.tanh(x))
     elif FLAGS.activation == "softplus":
-        activation = jax.nn.sigmoid
+        activation = jax.nn.softplus
     else:
         raise
     
     kernel_sizes = [5,5,3,3,3]
-    dilation_sizes = [1,1,1,1,1]
+    dilation_sizes = [2,1,1,1,1]
     for i in range(layer):
         bijections += [survae.Squeeze2d._setup(2)]
         C *= 2**2
@@ -193,7 +193,7 @@ def train_step(optimizer, batch, lr, rng):
 
 
 def sampling(params,rng,num_samples=4):
-    generate_images = model().apply({'params': params}, rng=rng, num_samples=num_samples, _rng=rng ,method=model().sample)
+    generate_images = model().apply({'params': params}, rng=rng, num_samples=num_samples ,method=model().sample)
     generate_images = jnp.transpose(generate_images,(0,2,3,1))
     return generate_images
 

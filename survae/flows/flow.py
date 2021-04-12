@@ -28,23 +28,33 @@ class Flow(nn.Module, Distribution):
         else:
             self._transforms = []
 
-    def __call__(self, x, *args, **kwargs):
-        return self.log_prob(x, *args, **kwargs)
+    def __call__(self, x, params=None, *args, **kwargs):
+        return self.log_prob(x=x, params=params, *args, **kwargs)
 
-    def log_prob(self, x, *args, **kwargs):
+    def log_prob(self, x, params=None, *args, **kwargs):
         log_prob = jnp.zeros(x.shape[0])
         for i,transform in enumerate(self._transforms):
-            x, ldj = transform(x=x, *args, **kwargs)
+            # print(i, transform.__class__.__name__, x.shape)
+            x, ldj = transform.forward(x=x, *args, **kwargs)
             log_prob += ldj
-        log_prob += self._base_dist.log_prob(x, params=jnp.zeros(self.latent_size), *args, **kwargs)
+        if params == None:
+            params = jnp.zeros(self.latent_size)
+        log_prob += self._base_dist.log_prob(x, params=params, 
+                                    shape=self.latent_size, *args, **kwargs)
         return log_prob
 
-    def sample(self, rng, num_samples, *args, **kwargs):
-        z = self._base_dist.sample(rng=rng, num_samples=num_samples, params=jnp.zeros(self.latent_size), *args, **kwargs)
+    def sample(self, rng, num_samples, params=None, *args, **kwargs):
+        if params == None:
+            params = jnp.zeros(self.latent_size)
+        z = self._base_dist.sample(rng=rng, num_samples=num_samples, params=params, 
+                                    shape=self.latent_size, *args, **kwargs)
+
         for i, transform in enumerate(reversed(self._transforms)):
             z = transform.inverse(z=z, rng=rng, *args, **kwargs)
+            
 
         return z
+
 
 
 class SimpleRealNVP(Flow):

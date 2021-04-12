@@ -11,10 +11,11 @@ class AffineCoupling(nn.Module, Bijective):
     shift_and_scale_fn: Callable
     _reverse_mask: bool
     activation: Callable = jnp.exp
+    mask_size: int = None
 
     @staticmethod
-    def _setup(shift_and_scale_fn, _reverse_mask, activation=jnp.exp):
-        return partial(AffineCoupling, shift_and_scale_fn, _reverse_mask, activation)        
+    def _setup(shift_and_scale_fn, _reverse_mask, activation=jnp.exp, mask_size=None):
+        return partial(AffineCoupling, shift_and_scale_fn, _reverse_mask, activation, mask_size)        
 
     def setup(self):
         self.shift_and_scale = self.shift_and_scale_fn()
@@ -24,7 +25,10 @@ class AffineCoupling(nn.Module, Bijective):
         return self.forward(x, *args, **kwargs)
 
     def forward(self, x, *args, **kwargs):
-        mask_size = x.shape[1] // 2
+        if self.mask_size == None:
+            mask_size = x.shape[1] // 2
+        else:
+            mask_size = self.mask_size
         x0 = x[:, :mask_size]
         x1 = x[:, mask_size:]
 
@@ -44,8 +48,10 @@ class AffineCoupling(nn.Module, Bijective):
 
 
     def inverse(self, z, *args, **kwargs):
-        mask_size = z.shape[1] // 2
-
+        if self.mask_size == None:
+            mask_size = z.shape[1] // 2
+        else:
+            mask_size = self.mask_size
         z0 = z[:, :mask_size]
         z1 = z[:, mask_size:]
         
@@ -69,10 +75,11 @@ class ConditionalAffineCoupling(nn.Module, Bijective):
     shift_and_scale_fn: Callable
     _reverse_mask: bool
     activation: Callable = jnp.exp
+    mask_size: int = None
 
     @staticmethod
-    def _setup(shift_and_scale_fn, _reverse_mask, activation=jnp.exp):
-        return partial(AffineCoupling, shift_and_scale_fn, _reverse_mask, activation)        
+    def _setup(shift_and_scale_fn, _reverse_mask, activation=jnp.exp, mask_size=None):
+        return partial(AffineCoupling, shift_and_scale_fn, _reverse_mask, activation, mask_size)        
 
     def setup(self):
         self.shift_and_scale = self.shift_and_scale_fn()
@@ -82,7 +89,10 @@ class ConditionalAffineCoupling(nn.Module, Bijective):
         return self.forward(x, *args, **kwargs)
 
     def forward(self, x, cond, *args, **kwargs):
-        mask_size = x.shape[1] // 2
+        if self.mask_size == None:
+            mask_size = x.shape[1] // 2
+        else:
+            mask_size = self.mask_size
         x0 = x[:, :mask_size]
         x1 = x[:, mask_size:]
 
@@ -102,7 +112,10 @@ class ConditionalAffineCoupling(nn.Module, Bijective):
 
 
     def inverse(self, z, cond, *args, **kwargs):
-        mask_size = z.shape[1] // 2
+        if self.mask_size == None:
+            mask_size = z.shape[1] // 2
+        else:
+            mask_size = self.mask_size
 
         z0 = z[:, :mask_size]
         z1 = z[:, mask_size:]

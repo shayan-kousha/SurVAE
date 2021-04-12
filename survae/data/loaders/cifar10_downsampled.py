@@ -13,7 +13,7 @@ str2interpolation = {
 
 class Resize():
 
-    def __init__(self, size=(32, 32), interpolation='bicubic'):
+    def __init__(self, size=(32, 32), interpolation='nearest'):
         self.size = size
         self.interpolation = str2interpolation.get(interpolation, None)
 
