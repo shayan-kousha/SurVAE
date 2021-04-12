@@ -31,8 +31,8 @@ class ConditionalLayer(nn.Module):
         return self.forward(x=x, cond=cond,*args, **kwargs)
 
     def forward(self, x, cond, *args, **kwargs):
-        cond = self._cond_net(jax.lax.stop_gradient(cond))
-        # cond = self._cond_net(cond)
+        # cond = self._cond_net(jax.lax.stop_gradient(cond))
+        cond = self._cond_net(cond)
         ldj = jnp.zeros(x.shape[0])
         for i,transform in enumerate(self._transforms):
             x, _ldj = transform(x=x, cond=cond, *args, **kwargs)

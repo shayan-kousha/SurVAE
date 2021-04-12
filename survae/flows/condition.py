@@ -27,7 +27,8 @@ class ConditionalDist(nn.Module):
 
     def log_prob(self, x, cond, *args, **kwargs):
         # print("############ Cond Dist ######Before######", cond.mean(), cond.max(), cond.min())
-        cond = self._cond_net(jax.lax.stop_gradient(cond))
+        # cond = self._cond_net(jax.lax.stop_gradient(cond))
+        cond = self._cond_net(cond)
         # print("############ Cond Dist ######After######", cond.mean(), cond.max(), cond.min())
         log_prob = self._base_dist.log_prob(x=x,cond=cond, *args, **kwargs)
         return log_prob
