@@ -24,7 +24,7 @@ from torchvision.transforms.functional import resize
 from survae.distributions import StandardNormal2d, Normal
 from survae.data.loaders import disp_imdata
 
-from survae.transforms import Conv1x1, ConditionalCoupling, Coupling, AffineCoupling, UniformDequantization, Split, Squeeze2d
+from survae.transforms import Conv1x1, ConditionalAffineCoupling, ConditionalCoupling, Coupling, AffineCoupling, UniformDequantization, Split, Squeeze2d
 from survae.flows import SplitFlow, ProNF
 import numpy as np
 from flax.training import checkpoints
@@ -41,11 +41,21 @@ parser.add_argument('--augmentation', type=str, default=None)
 parser.add_argument('--dataset', type=str, default='cifar10')
 parser.add_argument('--num_bits', type=int, default=8)
 parser.add_argument('--resume', action='store_true', default=False)
-parser.add_argument('--interpolation' , type=str, default='bicubic')
+parser.add_argument('--interpolation' , type=str, default='nearest')
 parser.add_argument('--image_size', nargs='+', required=True)
 parser.add_argument('--smallest', action='store_true', default=False)
 
 args = parser.parse_args()
+
+
+interpolations = {
+    'nearest': Image.NEAREST,
+    'box': Image.BOX,
+    'bilinear': Image.BILINEAR,
+    'hamming': Image.HAMMING,
+    'bicubic': Image.BICUBIC,
+    'lanczos': Image.LANCZOS
+}
 
 def init(key, shape, dtype=jnp.float32):
     return random.uniform(key, shape, dtype, minval=-jnp.sqrt(1/shape[0]), maxval=jnp.sqrt(1/shape[0])) 
@@ -115,6 +125,7 @@ def get_data(args):
     return train_loader, eval_loader, data_shape
 
 # TODO update it to use different interpolation
+# TODO scaleto (-0.5, 0.5)
 def resize_gt(original_gt_image, gt_size, interpolation=Image.BICUBIC):
     final_gt_images = None
     for i in range(original_gt_image.shape[0]):
@@ -126,6 +137,8 @@ def resize_gt(original_gt_image, gt_size, interpolation=Image.BICUBIC):
         else:
             final_gt_images = np.concatenate((final_gt_images, np_resized_gt), axis=0)
         
+    final_gt_images = (final_gt_images / 255) - 0.5
+
     return final_gt_images
 
 def get_model(image_shape):
@@ -138,7 +151,7 @@ def get_model(image_shape):
         output_image_shape = (image_shape[0], int(size)//2, int(size)//2)
 
         split_flow_transforms = []
-        split_flow_transforms = [AffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_latent_shape)), _reverse_mask=layer % 2 != 0) for layer in range(num_layers)]
+        split_flow_transforms = [ConditionalAffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_latent_shape)), _reverse_mask=layer % 2 != 0) for layer in range(num_layers)]
         # for layer in range(4):
         #     split_flow_transforms.extend([
         #                 Conv1x1._setup(image_shape[0]*3),
@@ -149,11 +162,14 @@ def get_model(image_shape):
         #                                     depth=10,
         #                                     growth=64,
         #                                     dropout=0.0,
-        #                                     gated_conv=True)
+        #                                     gated_conv=True,
+        #                                     num_condition=(image_shape[0]*3)//2)
         #             ])
         split_flow = SplitFlow._setup(StandardNormal2d, split_flow_transforms, output_latent_shape)
 
-        transforms.append(UniformDequantization._setup(num_bits=args.num_bits))
+        if i == 0: # TODO
+            transforms.append(UniformDequantization._setup(num_bits=args.num_bits))
+
         transforms.append(Squeeze2d._setup())
         for layer in range(num_layers):
             transforms.extend([
@@ -222,10 +238,11 @@ def train_pro_nf(monitor_every=10):
     rng, key = random.split(rng)
     pro_nf = get_model(image_shape)
     gt_size = (dummy.shape[2] // 2 , dummy.shape[3] // 2)
-    gt_image = resize_gt(dummy, gt_size)
+    gt_image = resize_gt(dummy, gt_size, interpolations[args.interpolation])
     params = pro_nf.init(key, dummy, rng=rng, gt_image=gt_image)
     optimizer_def = optim.Adam(learning_rate=learning_rate)
     optimizer = optimizer_def.create(params)
+    print("initialization done")
 
     if args.resume:
         print('resuming')
@@ -266,20 +283,25 @@ def train_pro_nf(monitor_every=10):
         validation_loss = []
         for x in train_loader:
             rng, key = random.split(rng)
-            gt_image = resize_gt(x, gt_size)
+            gt_image = resize_gt(x, gt_size, interpolations[args.interpolation])
             optimizer, loss_val = train_step(optimizer, jnp.round(jnp.array(x), 4), gt_image, rng)
             train_loss.append(loss_val)
         
-        if e % 5 == 0:
-            for x in eval_loader:
-                rng, key = random.split(rng)
-                gt_image = resize_gt(x, gt_size)
-                loss_val = loss_fn(optimizer.target, jnp.array(x), gt_image, rng)
-                validation_loss.append(loss_val)
-        
-            sample(optimizer.target, rng, 25, e, dir_name, gt_image)
-            checkpoints.save_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer, e, keep=3)
-            print('epoch %s/%s:' % (e+1, epoch), 'loss = %.3f' % jnp.mean(jnp.array(train_loss)), 'val_loss = %0.3f' % jnp.mean(jnp.array(validation_loss)))
+        for x in eval_loader:
+            rng, key = random.split(rng)
+            gt_image = resize_gt(x, gt_size)
+            loss_val = loss_fn(optimizer.target, jnp.array(x), gt_image, rng)
+            validation_loss.append(loss_val)
+    
+        # sample(optimizer.target, rng, 25, e, dir_name, gt_image)
+        # checkpoints.save_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer, e, keep=3)
+        print('epoch %s/%s:' % (e+1, epoch), 'loss = %.3f' % jnp.mean(jnp.array(train_loss)), 'val_loss = %0.3f' % jnp.mean(jnp.array(validation_loss)))
 
 if __name__ == "__main__":
   train_pro_nf()
+
+
+  ## 
+## 1. add variational
+## 2. list ke khodam neveshtam
+## 3. karai ke vincent karde

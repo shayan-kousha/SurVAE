@@ -91,12 +91,12 @@ class SplitFlow(Flow):
         
         for layer in self._transforms:
             z_shape = z.shape
-            if isinstance(layer, AffineCoupling):
+            if isinstance(layer, ConditionalAffineCoupling):
                 z = z.reshape((z.shape[0], np.prod(z.shape[1:])))
 
             z, log_det_J_layer = layer(z, *args, **kwargs)
 
-            if isinstance(layer, AffineCoupling):
+            if isinstance(layer, ConditionalAffineCoupling):
                 z = z.reshape(z_shape)
 
             log_det_J += log_det_J_layer
@@ -107,12 +107,12 @@ class SplitFlow(Flow):
         x = self.base_dist.sample(rng, num_samples, jnp.zeros(self.latent_size))
         for layer in reversed(self._transforms):
             x_shape = x.shape
-            if isinstance(layer, AffineCoupling):
+            if isinstance(layer, ConditionalAffineCoupling):
                 x = x.reshape((x.shape[0], np.prod(x.shape[1:])))
 
             x = layer.inverse(x)
 
-            if isinstance(layer, AffineCoupling):
+            if isinstance(layer, ConditionalAffineCoupling):
                 x = x.reshape(x_shape)
 
         return x
@@ -121,6 +121,7 @@ class ProNF(Flow):
     base_dist: Distribution = None
     transforms: Union[List[Transform],None] = None
     latent_shape: Union[Tuple[int],None] = None
+    axis=-1
 
     def __call__(self, x, *args, **kwargs):
         return self.log_prob(x, *args, **kwargs)
@@ -141,9 +142,9 @@ class ProNF(Flow):
             mean = jnp.mean(gt_image, axis=0)
             # mean = jnp.zeros(mean.shape)
             log_std = jnp.zeros(mean.shape)
-            params = jnp.concatenate((mean, log_std), axis=-1)
+            params = jnp.concatenate((mean, log_std), axis=self.axis)
 
-        return self.base_dist.log_prob(z, params) + log_det_J
+        return self.base_dist.log_prob(z, params,axis=-1) + log_det_J
 
     def sample(self, rng, num_samples, gt_image, *args, **kwargs):
         params = jnp.zeros(self.latent_shape)
@@ -151,9 +152,9 @@ class ProNF(Flow):
             mean = jnp.mean(gt_image, axis=0)
             # mean = jnp.zeros(mean.shape)
             log_std = jnp.zeros(mean.shape)
-            params = jnp.concatenate((mean, log_std), axis=-1)
+            params = jnp.concatenate((mean, log_std), axis=self.axis)
         
-        x = self.base_dist.sample(rng, num_samples, params)
+        x = self.base_dist.sample(rng, num_samples, params, axis=self.axis)
         for layer in reversed(self._transforms):
             x = layer.inverse(x, rng, *args, **kwargs)
 
