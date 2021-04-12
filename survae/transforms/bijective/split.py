@@ -30,7 +30,7 @@ class Split(nn.Module, Bijective):
         return z[0], ldj
 
     def inverse(self, z, rng, *args, **kwargs):
-        z2 = self._flow.sample(rng=rng, num_samples=z.shape[0], cond=z, *args, **kwargs)
+        z2 = self._flow.sample(rng=rng, num_samples=z.shape[0], cond=z)
 
         return jnp.concatenate((z,z2),axis=self.dim)
 

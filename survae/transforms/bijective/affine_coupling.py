@@ -110,7 +110,7 @@ class ConditionalAffineCoupling(nn.Module, Bijective):
         if self._reverse_mask:
             z0, z1 = z1, z0
 
-        translation, scale = self.shift_and_scale(jnp.concatenate([z0,cond],axis=1))
+        translation, scale = self.shift_and_scale(jnp.concatenate([z0, cond.reshape(cond.shape[0], -1)],axis=1))
         z1 -= translation
         scale = self.activation(scale)
         z1 /= scale

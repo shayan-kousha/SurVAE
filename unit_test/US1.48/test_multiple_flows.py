@@ -171,17 +171,24 @@ def get_model(image_shape):
             transforms.append(UniformDequantization._setup(num_bits=args.num_bits))
 
         transforms.append(Squeeze2d._setup())
+        # for layer in range(num_layers):
+        #     transforms.extend([
+        #                 Conv1x1._setup(image_shape[0]*4),
+        #                 Coupling._setup(in_channels=image_shape[0]*4,
+        #                         num_blocks=1,
+        #                         mid_channels=64,
+        #                         depth=10,
+        #                         growth=64,
+        #                         dropout=0.0,
+        #                         gated_conv=True)
+        #             ])
+
         for layer in range(num_layers):
             transforms.extend([
-                        Conv1x1._setup(image_shape[0]*4),
-                        Coupling._setup(in_channels=image_shape[0]*4,
-                                num_blocks=1,
-                                mid_channels=64,
-                                depth=10,
-                                growth=64,
-                                dropout=0.0,
-                                gated_conv=True)
-                    ])
+                Conv1x1._setup(image_shape[0]*4),
+                ConditionalAffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_image_shape)*4), _reverse_mask=layer % 2 != 0)
+            ])
+
         transforms.append(Split._setup(flow=split_flow, num_keep=3, dim=1))
     
     if args.smallest or (len(args.image_size) > 1 and i == len(args.image_size) - 1):
@@ -293,7 +300,8 @@ def train_pro_nf(monitor_every=10):
             loss_val = loss_fn(optimizer.target, jnp.array(x), gt_image, rng)
             validation_loss.append(loss_val)
     
-        # sample(optimizer.target, rng, 25, e, dir_name, gt_image)
+        num_samples = 16
+        sample(optimizer.target, rng, num_samples, e, dir_name, gt_image[:num_samples])
         # checkpoints.save_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer, e, keep=3)
         print('epoch %s/%s:' % (e+1, epoch), 'loss = %.3f' % jnp.mean(jnp.array(train_loss)), 'val_loss = %0.3f' % jnp.mean(jnp.array(validation_loss)))
 

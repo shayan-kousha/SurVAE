@@ -79,14 +79,14 @@ class SplitFlow(Flow):
     transforms: Union[List[Transform],None] = None
     latent_size: Union[Tuple[int],None] = None
 
-    def __call__(self, x, *args, **kwargs):
-        return self.log_prob(x, *args, **kwargs)
+    def __call__(self, x, cond, *args, **kwargs):
+        return self.log_prob(x, cond, *args, **kwargs)
 
     @staticmethod
     def _setup(base_dist, transforms, latent_size):
         return partial(SplitFlow, base_dist, transforms, latent_size)
 
-    def log_prob(self, x, *args, **kwargs):
+    def log_prob(self, x, cond, *args, **kwargs):
         log_det_J, z =  jnp.zeros(x.shape[0]), x
         
         for layer in self._transforms:
@@ -94,7 +94,7 @@ class SplitFlow(Flow):
             if isinstance(layer, ConditionalAffineCoupling):
                 z = z.reshape((z.shape[0], np.prod(z.shape[1:])))
 
-            z, log_det_J_layer = layer(z, *args, **kwargs)
+            z, log_det_J_layer = layer(z, cond=cond, *args, **kwargs)
 
             if isinstance(layer, ConditionalAffineCoupling):
                 z = z.reshape(z_shape)
@@ -103,14 +103,14 @@ class SplitFlow(Flow):
 
         return self.base_dist.log_prob(z, None) + log_det_J
 
-    def sample(self, rng, num_samples, *args, **kwargs):
+    def sample(self, rng, num_samples, cond, *args, **kwargs):
         x = self.base_dist.sample(rng, num_samples, jnp.zeros(self.latent_size))
         for layer in reversed(self._transforms):
             x_shape = x.shape
             if isinstance(layer, ConditionalAffineCoupling):
                 x = x.reshape((x.shape[0], np.prod(x.shape[1:])))
 
-            x = layer.inverse(x)
+            x = layer.inverse(x, cond=cond)
 
             if isinstance(layer, ConditionalAffineCoupling):
                 x = x.reshape(x_shape)
@@ -134,7 +134,15 @@ class ProNF(Flow):
         log_det_J, z =  jnp.zeros(x.shape[0]), x
         
         for layer in self._transforms:
-            z, log_det_J_layer = layer(z, *args, **kwargs)
+            z_shape = z.shape
+            if isinstance(layer, ConditionalAffineCoupling):
+                z = z.reshape((z.shape[0], np.prod(z.shape[1:])))
+
+            z, log_det_J_layer = layer(z, cond=gt_image, *args, **kwargs)
+
+            if isinstance(layer, ConditionalAffineCoupling):
+                z = z.reshape(z_shape)
+
             log_det_J += log_det_J_layer
 
         params = None
@@ -156,7 +164,14 @@ class ProNF(Flow):
         
         x = self.base_dist.sample(rng, num_samples, params, axis=self.axis)
         for layer in reversed(self._transforms):
-            x = layer.inverse(x, rng, *args, **kwargs)
+            x_shape = x.shape
+            if isinstance(layer, ConditionalAffineCoupling):
+                x = x.reshape((x.shape[0], np.prod(x.shape[1:])))
+
+            x = layer.inverse(x, rng=rng, cond=gt_image, *args, **kwargs)
+
+            if isinstance(layer, ConditionalAffineCoupling):
+                x = x.reshape(x_shape)
 
         return x
 
