@@ -180,7 +180,7 @@ def get_model(image_shape):
                     ])
         split_flow = SplitFlow._setup(StandardNormal2d, split_flow_transforms, output_latent_shape)
 
-        if i == 0: # TODO
+        if i == 0:
             if args.dequant == 'uniform':
                 transforms.append(UniformDequantization._setup(num_bits=args.num_bits))
             elif args.dequant == 'flow':
@@ -343,7 +343,7 @@ def train_pro_nf(monitor_every=10):
 
 
     num_samples = 2
-    sample(optimizer.target, rng, num_samples, e, dir_name, gt_image[:num_samples])
+    sample(optimizer.target, rng, num_samples, 0, dir_name, gt_image[:num_samples])
     print('test sample done')
     for e in range(epoch):
 
