@@ -45,6 +45,19 @@ parser.add_argument('--interpolation' , type=str, default='nearest')
 parser.add_argument('--image_size', nargs='+', required=True)
 parser.add_argument('--smallest', action='store_true', default=False)
 
+# Dequant params
+parser.add_argument('--dequant', type=str, default='flow', choices={'uniform', 'flow'})
+parser.add_argument('--dequant_steps', type=int, default=4)
+parser.add_argument('--dequant_context', type=int, default=32)
+
+# Net params
+parser.add_argument('--densenet_blocks', type=int, default=1)
+parser.add_argument('--densenet_channels', type=int, default=64)
+parser.add_argument('--densenet_depth', type=int, default=10)
+parser.add_argument('--densenet_growth', type=int, default=64)
+parser.add_argument('--dropout', type=float, default=0.0)
+parser.add_argument('--gated_conv', type=eval, default=True)
+
 args = parser.parse_args()
 
 
@@ -152,6 +165,7 @@ def get_model(image_shape):
         # split_flow_transforms = [ConditionalAffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_latent_shape)), _reverse_mask=layer % 2 != 0) for layer in range(num_layers)]
         for layer in range(4):
             split_flow_transforms.extend([
+                        ActNorm._setup(image_shape[0]*3),
                         Conv1x1._setup(image_shape[0]*3),
                         ConditionalCoupling._setup(in_channels=image_shape[0]*3+1,
                                             num_context=32,
@@ -166,7 +180,20 @@ def get_model(image_shape):
         split_flow = SplitFlow._setup(StandardNormal2d, split_flow_transforms, output_latent_shape)
 
         if i == 0: # TODO
-            transforms.append(UniformDequantization._setup(num_bits=args.num_bits))
+            if args.dequant == 'uniform':
+                transforms.append(UniformDequantization._setup(num_bits=args.num_bits))
+            elif args.dequant == 'flow':
+                dequantize_flow = DequantizationFlow._setup(data_shape=image_shape,
+                                                            num_bits=args.num_bits,
+                                                            num_steps=args.dequant_steps,
+                                                            num_context=args.dequant_context,
+                                                            num_blocks=args.densenet_blocks,
+                                                            mid_channels=args.densenet_channels,
+                                                            depth=args.densenet_depth,
+                                                            growth=args.densenet_growth,
+                                                            dropout=args.dropout,
+                                                            gated_conv=args.gated_conv)
+                transforms.append(VariationalDequantization._setup(encoder=dequantize_flow, num_bits=args.num_bits))
 
         transforms.append(Squeeze2d._setup())
         transforms.append(ActNorm._setup(image_shape[0]*4))
@@ -191,6 +218,16 @@ def get_model(image_shape):
                         growth=64,
                         dropout=0.0,
                         gated_conv=True)
+
+                # ConditionalCoupling._setup(in_channels=image_shape[0]*4,
+                #                             num_context=32,
+                #                             num_blocks=1,
+                #                             mid_channels=64,
+                #                             depth=10,
+                #                             growth=64,
+                #                             dropout=0.0,
+                #                             gated_conv=True)
+
                 # ConditionalAffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_image_shape)*4), _reverse_mask=layer % 2 != 0)
 
             ])
@@ -315,10 +352,8 @@ if __name__ == "__main__":
   train_pro_nf()
 
 
-  ## 
-## 1. add variational
+
 ## 2. list ke khodam neveshtam
-## 3. karai ke vincent karde
 
 ## 1.  add variationaldg
 ## 2. ConditionalCoupling dorost konam baraye split_flow_transforms
@@ -326,3 +361,4 @@ if __name__ == "__main__":
 ## 3. az Affine Injector behtar estefade konam
 ## 4. be split_flow_transforms actnorm ezafe konam
 ## 5. be split_flow_transforms conv1x1 ezafe konam
+## 6. use an encoder rather than the ground truth image itself gor affine injector
