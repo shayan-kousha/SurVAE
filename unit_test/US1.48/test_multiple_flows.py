@@ -24,8 +24,8 @@ from torchvision.transforms.functional import resize
 from survae.distributions import StandardNormal2d, Normal
 from survae.data.loaders import disp_imdata
 
-from survae.transforms import Conv1x1, ConditionalAffineCoupling, ConditionalCoupling, Coupling, AffineCoupling, UniformDequantization, Split, Squeeze2d
-from survae.flows import SplitFlow, ProNF
+from survae.transforms import VariationalDequantization, AffineInjector, ActNorm, Conv1x1, ConditionalAffineCoupling, ConditionalCoupling, Coupling, AffineCoupling, UniformDequantization, Split, Squeeze2d
+from survae.flows import SplitFlow, ProNF, DequantizationFlow
 import numpy as np
 from flax.training import checkpoints
 from PIL import Image
@@ -124,8 +124,6 @@ def get_data(args):
 
     return train_loader, eval_loader, data_shape
 
-# TODO update it to use different interpolation
-# TODO scaleto (-0.5, 0.5)
 def resize_gt(original_gt_image, gt_size, interpolation=Image.BICUBIC):
     final_gt_images = None
     for i in range(original_gt_image.shape[0]):
@@ -151,42 +149,50 @@ def get_model(image_shape):
         output_image_shape = (image_shape[0], int(size)//2, int(size)//2)
 
         split_flow_transforms = []
-        split_flow_transforms = [ConditionalAffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_latent_shape)), _reverse_mask=layer % 2 != 0) for layer in range(num_layers)]
-        # for layer in range(4):
-        #     split_flow_transforms.extend([
-        #                 Conv1x1._setup(image_shape[0]*3),
-        #                 ConditionalCoupling._setup(in_channels=image_shape[0]*3,
-        #                                     num_context=32,
-        #                                     num_blocks=1,
-        #                                     mid_channels=64,
-        #                                     depth=10,
-        #                                     growth=64,
-        #                                     dropout=0.0,
-        #                                     gated_conv=True,
-        #                                     num_condition=(image_shape[0]*3)//2)
-        #             ])
+        # split_flow_transforms = [ConditionalAffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_latent_shape)), _reverse_mask=layer % 2 != 0) for layer in range(num_layers)]
+        for layer in range(4):
+            split_flow_transforms.extend([
+                        Conv1x1._setup(image_shape[0]*3),
+                        ConditionalCoupling._setup(in_channels=image_shape[0]*3+1,
+                                            num_context=32,
+                                            num_blocks=1,
+                                            mid_channels=64,
+                                            depth=10,
+                                            growth=64,
+                                            dropout=0.0,
+                                            gated_conv=True,
+                                            num_condition=(image_shape[0]*3)//2)
+                    ])
         split_flow = SplitFlow._setup(StandardNormal2d, split_flow_transforms, output_latent_shape)
 
         if i == 0: # TODO
             transforms.append(UniformDequantization._setup(num_bits=args.num_bits))
 
         transforms.append(Squeeze2d._setup())
-        # for layer in range(num_layers):
-        #     transforms.extend([
-        #                 Conv1x1._setup(image_shape[0]*4),
-        #                 Coupling._setup(in_channels=image_shape[0]*4,
-        #                         num_blocks=1,
-        #                         mid_channels=64,
-        #                         depth=10,
-        #                         growth=64,
-        #                         dropout=0.0,
-        #                         gated_conv=True)
-        #             ])
-
+        transforms.append(ActNorm._setup(image_shape[0]*4))
+        transforms.append(Conv1x1._setup(image_shape[0]*4))
         for layer in range(num_layers):
             transforms.extend([
+                ActNorm._setup(image_shape[0]*4), 
                 Conv1x1._setup(image_shape[0]*4),
-                ConditionalAffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_image_shape)*4), _reverse_mask=layer % 2 != 0)
+                # AffineInjector._setup(out_channels=image_shape[0]*4*2,
+                #         num_context=32,
+                #         num_blocks=1,
+                #         mid_channels=64,
+                #         depth=10,
+                #         growth=64,
+                #         dropout=0.0,
+                #         gated_conv=True),
+
+                Coupling._setup(in_channels=image_shape[0]*4,
+                        num_blocks=1,
+                        mid_channels=64,
+                        depth=10,
+                        growth=64,
+                        dropout=0.0,
+                        gated_conv=True)
+                # ConditionalAffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_image_shape)*4), _reverse_mask=layer % 2 != 0)
+
             ])
 
         transforms.append(Split._setup(flow=split_flow, num_keep=3, dim=1))
@@ -313,3 +319,10 @@ if __name__ == "__main__":
 ## 1. add variational
 ## 2. list ke khodam neveshtam
 ## 3. karai ke vincent karde
+
+## 1.  add variationaldg
+## 2. ConditionalCoupling dorost konam baraye split_flow_transforms
+#### 2.1 ConditionalCoupling dorost konam baraye flow asli
+## 3. az Affine Injector behtar estefade konam
+## 4. be split_flow_transforms actnorm ezafe konam
+## 5. be split_flow_transforms conv1x1 ezafe konam

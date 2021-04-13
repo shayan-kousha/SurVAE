@@ -120,7 +120,7 @@ class ElementwiseParams2d(nn.Module):
     def forward(self, x):
         assert len(x.shape) == 4, 'Expected input of shape (B,C,H,W)'
         if self.num_params != 1:
-            assert x.shape[1] % self.num_params == 0
+            # assert x.shape[1] % self.num_params == 0
             channels = x.shape[1] // self.num_params
             # x.shape = (bs, num_params * channels , height, width)
             if self.mode == 'interleaved':
