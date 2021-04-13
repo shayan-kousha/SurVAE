@@ -38,6 +38,8 @@ class ConditionalCoupling(nn.Module, Bijective, ConditionalTransform):
 
     def setup(self):
         self._coupling_net = [coupling() for coupling in self.coupling_net]
+        if self.context_net:
+            self._context_net = [context() for context in self.context_net]
 
     def __call__(self, x, cond, *args, **kwargs):
         return self.forward(x, cond)
@@ -68,7 +70,9 @@ class ConditionalCoupling(nn.Module, Bijective, ConditionalTransform):
             return jnp.split(input, 2, axis=self.split_dim)
 
     def forward(self, x, cond):
-        if self.context_net: cond = self.context_net(cond)
+        if self._context_net: 
+            for context_layer in self._context_net:
+                cond = context_layer(cond)
         id, x2 = self.split_input(x)
         elementwise_params = jnp.concatenate([id, cond], axis=self.split_dim)
         for coupling_layer in self._coupling_net:
@@ -78,7 +82,9 @@ class ConditionalCoupling(nn.Module, Bijective, ConditionalTransform):
         return z, ldj
 
     def inverse(self, z, cond, *args, **kwargs):
-        if self.context_net: cond = self.context_net(cond)
+        if self._context_net: 
+            for context_layer in self._context_net:
+                cond = context_layer(cond)
         id, z2 = self.split_input(z)
         elementwise_params = jnp.concatenate([id, cond], axis=self.split_dim)
         for coupling_layer in self._coupling_net:
@@ -191,6 +197,8 @@ class AffineInjector(nn.Module, Bijective):
 
     def setup(self):
         self._coupling_net = [coupling() for coupling in self.coupling_net]
+        if self.context_net:
+            self._context_net = [context() for context in self.context_net]
 
     def __call__(self, x, cond, *args, **kwargs):
         return self.forward(x, cond)
@@ -221,7 +229,10 @@ class AffineInjector(nn.Module, Bijective):
             return jnp.split(input, 2, axis=self.split_dim)
 
     def forward(self, x, cond):
-        if self.context_net: cond = self.context_net(cond)
+        if self._context_net: 
+            for context_layer in self._context_net:
+                cond = context_layer(cond)
+
         elementwise_params = cond
         for coupling_layer in self._coupling_net:
             elementwise_params = coupling_layer(elementwise_params)
@@ -229,7 +240,9 @@ class AffineInjector(nn.Module, Bijective):
         return z, ldj
 
     def inverse(self, z, cond, *args, **kwargs):
-        if self.context_net: cond = self.context_net(cond)
+        if self._context_net: 
+            for context_layer in self._context_net:
+                cond = context_layer(cond)
         elementwise_params = cond
         for coupling_layer in self._coupling_net:
             elementwise_params = coupling_layer(elementwise_params)

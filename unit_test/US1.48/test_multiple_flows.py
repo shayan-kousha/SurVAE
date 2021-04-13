@@ -31,6 +31,7 @@ from flax.training import checkpoints
 from PIL import Image
 from tensorflow.io import gfile
 from flax import serialization
+from survae.nn.nets import DenseNet
 
 
 parser = argparse.ArgumentParser()
@@ -195,6 +196,16 @@ def get_model(image_shape):
                                                             gated_conv=args.gated_conv)
                 transforms.append(VariationalDequantization._setup(encoder=dequantize_flow, num_bits=args.num_bits))
 
+        context_net = [DenseNet._setup(in_channels=0,
+                                     out_channels=3,
+                                     num_blocks=3,
+                                     mid_channels=args.densenet_channels,
+                                     depth=args.densenet_depth,
+                                     growth=args.densenet_growth,
+                                     dropout=args.dropout,
+                                     gated_conv=args.gated_conv,
+                                     zero_init=True)]
+                                     
         transforms.append(Squeeze2d._setup())
         transforms.append(ActNorm._setup(image_shape[0]*4))
         transforms.append(Conv1x1._setup(image_shape[0]*4))
@@ -202,31 +213,33 @@ def get_model(image_shape):
             transforms.extend([
                 ActNorm._setup(image_shape[0]*4), 
                 Conv1x1._setup(image_shape[0]*4),
-                # AffineInjector._setup(out_channels=image_shape[0]*4*2,
-                #         num_context=32,
+                AffineInjector._setup(out_channels=image_shape[0]*4*2,
+                        num_context=32,
+                        num_blocks=1,
+                        mid_channels=args.densenet_channels,
+                        depth=args.densenet_depth,
+                        growth=args.densenet_growth,
+                        dropout=args.dropout,
+                        gated_conv=args.gated_conv,
+                        context_net=context_net),
+
+                # Coupling._setup(in_channels=image_shape[0]*4,
                 #         num_blocks=1,
                 #         mid_channels=64,
                 #         depth=10,
                 #         growth=64,
                 #         dropout=0.0,
-                #         gated_conv=True),
+                #         gated_conv=True)
 
-                Coupling._setup(in_channels=image_shape[0]*4,
-                        num_blocks=1,
-                        mid_channels=64,
-                        depth=10,
-                        growth=64,
-                        dropout=0.0,
-                        gated_conv=True)
-
-                # ConditionalCoupling._setup(in_channels=image_shape[0]*4,
-                #                             num_context=32,
-                #                             num_blocks=1,
-                #                             mid_channels=64,
-                #                             depth=10,
-                #                             growth=64,
-                #                             dropout=0.0,
-                #                             gated_conv=True)
+                ConditionalCoupling._setup(in_channels=image_shape[0]*4,
+                                            num_context=32,
+                                            num_blocks=1,
+                                            mid_channels=args.densenet_channels,
+                                            depth=args.densenet_depth,
+                                            growth=args.densenet_growth,
+                                            dropout=args.dropout,
+                                            gated_conv=args.gated_conv,
+                                            context_net=context_net)
 
                 # ConditionalAffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_image_shape)*4), _reverse_mask=layer % 2 != 0)
 
@@ -328,7 +341,12 @@ def train_pro_nf(monitor_every=10):
         plt.savefig(path + '{}.png'.format(epoch))
         return samples
 
+
+    num_samples = 2
+    sample(optimizer.target, rng, num_samples, e, dir_name, gt_image[:num_samples])
+    print('test sample done')
     for e in range(epoch):
+
         train_loss = []
         validation_loss = []
         for x in train_loader:
