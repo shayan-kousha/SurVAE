@@ -149,7 +149,7 @@ def resize_gt(original_gt_image, gt_size, interpolation=Image.BICUBIC):
         else:
             final_gt_images = np.concatenate((final_gt_images, np_resized_gt), axis=0)
         
-    final_gt_images = (final_gt_images / 255) - 0.5
+    final_gt_images = (final_gt_images / 255.5) - 0.5
 
     return final_gt_images
 

@@ -201,6 +201,8 @@ class AffineInjector(nn.Module, Bijective):
         self._coupling_net = [coupling() for coupling in self.coupling_net]
         if self.context_net:
             self._context_net = [context() for context in self.context_net]
+        else:
+            self._context_net = None
 
     def __call__(self, x, cond, *args, **kwargs):
         return self.forward(x, cond)
