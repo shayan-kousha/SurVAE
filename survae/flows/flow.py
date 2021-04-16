@@ -28,33 +28,53 @@ class Flow(nn.Module, Distribution):
         else:
             self._transforms = []
 
-    def __call__(self, x, params=None, *args, **kwargs):
-        return self.log_prob(x=x, params=params, *args, **kwargs)
+    def __call__(self, x, params=None, verbose=False, *args, **kwargs):
+        return self.log_prob(x=x, params=params, verbose=verbose,*args, **kwargs)
 
-    def log_prob(self, x, params=None, *args, **kwargs):
+    def log_prob(self, x, params=None, verbose=False, *args, **kwargs):
         log_prob = jnp.zeros(x.shape[0])
-        for i,transform in enumerate(self._transforms):
-            # print(i, transform.__class__.__name__, x.shape)
-            x, ldj = transform.forward(x=x, *args, **kwargs)
-            log_prob += ldj
+        x, ldj = self.forward(x=x, verbose=verbose *args, **kwargs)
+        log_prob += ldj
+        # for i,transform in enumerate(self._transforms):
+        #     # print(i, transform.__class__.__name__, x.shape)
+        #     x, ldj = transform.forward(x=x, *args, **kwargs)
+        #     log_prob += ldj
         if params == None:
             params = jnp.zeros(self.latent_size)
         log_prob += self._base_dist.log_prob(x, params=params, 
                                     shape=self.latent_size, *args, **kwargs)
+        if verbose:
+            print("Log prob -",log_prob.mean())
         return log_prob
+
+    def forward(self, x, preprocess=True, verbose=False, *args, **kwargs):
+        log_prob = jnp.zeros(x.shape[0])
+        for i,transform in enumerate(self._transforms):
+            if preprocess == False and transform.__class__.__name__ in ("UniformDequantization","Shift"):
+                continue
+            x, ldj = transform.forward(x=x, *args, **kwargs)
+            if verbose and transform.__class__.__name__ == "Split":
+                print(ldj.mean())
+            log_prob += ldj
+        if verbose:
+            print("Final", log_prob.mean(),x.mean(),x.max(),x.min())
+        return x, log_prob
 
     def sample(self, rng, num_samples, params=None, *args, **kwargs):
         if params == None:
             params = jnp.zeros(self.latent_size)
         z = self._base_dist.sample(rng=rng, num_samples=num_samples, params=params, 
                                     shape=self.latent_size, *args, **kwargs)
-
-        for i, transform in enumerate(reversed(self._transforms)):
-            z = transform.inverse(z=z, rng=rng, *args, **kwargs)
-            
-
+        # for i, transform in enumerate(reversed(self._transforms)):
+        #     z = transform.inverse(z=z, rng=rng, *args, **kwargs)
+        z = self.inverse(z=z, rng=rng, *args, **kwargs)
         return z
-
+    def inverse(self, z, rng, preprocess=True, *args, **kwargs):
+        for i, transform in enumerate(reversed(self._transforms)):
+            if preprocess == False and transform.__class__.__name__ in ("UniformDequantization","Shift"):
+                pass
+            z = transform.inverse(z=z, rng=rng, *args, **kwargs)
+        return z
 
 
 class SimpleRealNVP(Flow):
@@ -264,3 +284,4 @@ class MultiScaleStochasticFlow(MultiScaleFlow):
             else:
                 x = transform.inverse(rng, x)
         return x
+

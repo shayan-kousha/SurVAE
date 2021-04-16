@@ -117,8 +117,6 @@ class Transform(nn.Module):
         x = nn.relu(x)
         x = nn.Conv(self.output_layer,kernel_size=(3,3),
                 kernel_init=jax.nn.initializers.zeros,bias_init=jax.nn.initializers.zeros)(x)
-        log_factor = self.param('log_factor',jax.nn.initializers.zeros,(1,1,self.output_layer))
-        x *= jnp.exp(log_factor * 3.0)
         shift, scale = np.split(x, 2, axis=-1)
         return jnp.transpose(shift,[0,3,1,2]), jnp.transpose(scale,[0,3,1,2])
 
@@ -158,7 +156,8 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
                                                                 kernel_size=(kernel_sizes[i],kernel_sizes[i]),
                                                                 dilation_size=(dilation_sizes[i],dilation_sizes[i]),
                                                                 latent_size=(C,H,W),
-                                                                num_layers=3)
+                                                                num_layers=3,
+                                                                hidden_size=32)
             else:
                 # _base_dist = survae.ConditionalNormal._setup(features=C,kernel_size=(3,3))
                 _base_dist = survae.StandardNormal
@@ -168,7 +167,8 @@ def model(num_flow_steps=32,C=3, H=32,W=32, hidden=256,layer=3):
                                                         features=2,
                                                         kernel_size=(kernel_sizes[i],kernel_sizes[i]),
                                                         latent_size=(C,H,W),
-                                                        num_layers=3)
+                                                        num_layers=3,
+                                                        hidden_size=32)
     else:
         _base_dist = survae.StandardNormal
     flow = survae.Flow(_base_dist,bijections,(C,H,W))

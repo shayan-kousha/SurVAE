@@ -43,10 +43,10 @@ class Logit(Sigmoid):
         return partial(Logit, eps=eps, temperature=temperature)
 
     @nn.compact
-    def __call__(self, rng, x):
-        return self.forward(rng, x)
+    def __call__(self, x, *args, **kwargs):
+        return self.forward(x, *args, **kwargs)
 
-    def forward(self, rng, x):
+    def forward(self, x, *args, **kwargs):
         # assert jnp.min(x) >= 0 and jnp.max(x) <= 1, 'x must be in [0,1]'
         x = jnp.clip(x, self.eps, 1 - self.eps)
 
@@ -54,7 +54,7 @@ class Logit(Sigmoid):
         ldj = - sum_except_batch(jnp.log(self.temperature) - jax.nn.softplus(-self.temperature * z) - jax.nn.softplus(self.temperature * z))
         return z, ldj
 
-    def inverse(self, rng, z):
+    def inverse(self, z, *args, **kwargs):
         z = self.temperature * z
         x = jax.nn.sigmoid(z)
         return x
