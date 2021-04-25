@@ -15,7 +15,7 @@ class Quantize():
         image = image * 255 # [0, 1] -> [0, 255]
         if self.num_bits != 8:
             image = torch.floor(image / 2 ** (8 - self.num_bits)) # [0, 255] -> [0, 2**num_bits - 1]
-        return image.long()
+        return image
 
 class UnsupervisedCIFAR10(CIFAR10):
     def __init__(self, root=root, train=True, transform=None, download=False):
@@ -60,13 +60,13 @@ class CIFAR10SURVAE(TrainTestLoader):
     https://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf
     '''
 
-    def __init__(self, root=root, download=True, num_bits=8, pil_transforms=[]):
+    def __init__(self, root=root, download=True, num_bits=8, pil_transforms=[], train_pil_transforms=[]):
 
         self.root = root
 
         # Define transformations
-        trans_train = pil_transforms + [ToTensor(), Quantize(num_bits)]
-        trans_test = [ToTensor(), Quantize(num_bits)]
+        trans_train = train_pil_transforms + pil_transforms + [ToTensor(), Quantize(num_bits)]
+        trans_test = pil_transforms + [ToTensor(), Quantize(num_bits)]
 
         # Load data
         self.train = UnsupervisedCIFAR10(root, train=True, transform=Compose(trans_train), download=download)

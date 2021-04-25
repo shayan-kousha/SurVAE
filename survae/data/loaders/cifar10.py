@@ -5,14 +5,14 @@ import matplotlib.pyplot as plt
 from survae.data.loaders import root
 from survae.data.loaders.utils import one_hot_encode,  logit, disp_imdata
 
-class CIFAR10:
+class CIFAR10_OLD:
     """
     The CIFAR-10 dataset.
     https://www.cs.toronto.edu/~kriz/cifar.html
     """
 
     alpha = 0.05
-    name = 'cifar10'
+    name = 'cifar10_old'
 
     class Data:
         """
@@ -45,7 +45,7 @@ class CIFAR10:
             """
             Transforms pixel values with logit to be unconstrained.
             """
-            return logit(CIFAR10.alpha + (1 - 2*CIFAR10.alpha) * x)
+            return logit(CIFAR10_OLD.alpha + (1 - 2*CIFAR10_OLD.alpha) * x)
 
         @staticmethod
         def _flip_augmentation(x):
@@ -64,7 +64,7 @@ class CIFAR10:
 
         rng = np.random.RandomState(42)
 
-        path = root + 'cifar10/'
+        path = root + CIFAR10_OLD.name + '/'
 
         # load train batches
         x = []
