@@ -30,11 +30,11 @@ Command for `corners`:
 ```python
 python experiments/toy/train_abs_flow.py --hidden_units [200,100] --dataset corners --clim 0.1 --scale_fn softplus
 ```
-Commands for `eightgaussians`:
+Command for `eightgaussians`:
 ```python
 python experiments/toy/train_abs_flow.py --hidden_units [200,100] --dataset eight_gaussians --clim 0.15 --scale_fn softplus
 ```
-Commands for `fourcircle`:
+Command for `fourcircle`:
 ```python
 python experiments/toy/train_abs_flow.py --hidden_units [200,100] --dataset fourcircle --clim 0.2 --scale_fn softplus
 ```
