@@ -149,17 +149,18 @@ class ProNF(Flow):
         if self.base_dist == Normal:
             mean = jnp.mean(gt_image, axis=0)
             # mean = jnp.zeros(mean.shape)
-            log_std = jnp.zeros(mean.shape)
+            log_std = jnp.zeros(mean.shape) - 2.0
             params = jnp.concatenate((mean, log_std), axis=self.axis)
 
         return self.base_dist.log_prob(z, params,axis=-1) + log_det_J
 
     def sample(self, rng, num_samples, gt_image, *args, **kwargs):
+        import ipdb;ipdb.set_trace()
         params = jnp.zeros(self.latent_shape)
         if self.base_dist == Normal:
             mean = jnp.mean(gt_image, axis=0)
             # mean = jnp.zeros(mean.shape)
-            log_std = jnp.zeros(mean.shape)
+            log_std = jnp.zeros(mean.shape) - 2.0
             params = jnp.concatenate((mean, log_std), axis=self.axis)
         
         x = self.base_dist.sample(rng, num_samples, params, axis=self.axis)

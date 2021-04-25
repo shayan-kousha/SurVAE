@@ -213,33 +213,33 @@ def get_model(image_shape):
             transforms.extend([
                 ActNorm._setup(image_shape[0]*4), 
                 Conv1x1._setup(image_shape[0]*4),
-                AffineInjector._setup(out_channels=image_shape[0]*4*2,
-                        num_context=32,
-                        num_blocks=1,
-                        mid_channels=args.densenet_channels,
-                        depth=args.densenet_depth,
-                        growth=args.densenet_growth,
-                        dropout=args.dropout,
-                        gated_conv=args.gated_conv,
-                        context_net=context_net),
-
-                # Coupling._setup(in_channels=image_shape[0]*4,
+                # AffineInjector._setup(out_channels=image_shape[0]*4*2,
+                #         num_context=32,
                 #         num_blocks=1,
-                #         mid_channels=64,
-                #         depth=10,
-                #         growth=64,
-                #         dropout=0.0,
-                #         gated_conv=True)
+                #         mid_channels=args.densenet_channels,
+                #         depth=args.densenet_depth,
+                #         growth=args.densenet_growth,
+                #         dropout=args.dropout,
+                #         gated_conv=args.gated_conv,
+                #         context_net=context_net),
 
-                ConditionalCoupling._setup(in_channels=image_shape[0]*4,
-                                            num_context=32,
-                                            num_blocks=1,
-                                            mid_channels=args.densenet_channels,
-                                            depth=args.densenet_depth,
-                                            growth=args.densenet_growth,
-                                            dropout=args.dropout,
-                                            gated_conv=args.gated_conv,
-                                            context_net=context_net)
+                Coupling._setup(in_channels=image_shape[0]*4,
+                        num_blocks=1,
+                        mid_channels=64,
+                        depth=10,
+                        growth=64,
+                        dropout=0.0,
+                        gated_conv=True)
+
+                # ConditionalCoupling._setup(in_channels=image_shape[0]*4,
+                #                             num_context=32,
+                #                             num_blocks=1,
+                #                             mid_channels=args.densenet_channels,
+                #                             depth=args.densenet_depth,
+                #                             growth=args.densenet_growth,
+                #                             dropout=args.dropout,
+                #                             gated_conv=args.gated_conv,
+                #                             context_net=context_net)
 
                 # ConditionalAffineCoupling._setup(Transform._setup(StandardNormal, hidden_nodes, np.prod(output_image_shape)*4), _reverse_mask=layer % 2 != 0)
 
@@ -270,16 +270,18 @@ def restore(ckpt_dir, optimizer, prefix='checkpoint_'):
             checkpoint_contents = fp.read()
             params = serialization.msgpack_restore(checkpoint_contents)
             layer_numbers = [int(key.split("_")[-1]) for key in params['target']['params'].keys()]
-            last_layer_number = np.max(layer_numbers) + 1
+            last_layer_number = np.max(layer_numbers)
+            first_param = np.min(layer_numbers)
             temp_params = optimizer_.state_dict()
 
             for key, value in params['target']['params'].items():
                 key_split = key.split("_")
-                key_split[-1] = str(int(key_split[-1]) + i*last_layer_number)
+                if i == 0 or  int(key_split[-1]) != first_param:
+                    key_split[-1] = str(int(key_split[-1]) + i*last_layer_number)
 
-                new_key = "_".join(key_split)
-                temp_params['target']['params'][new_key] = value
-                param_counter += 1
+                    new_key = "_".join(key_split)
+                    temp_params['target']['params'][new_key] = value
+                    param_counter += 1
 
             optimizer_ = serialization.from_state_dict(optimizer_, temp_params)
 
@@ -342,8 +344,9 @@ def train_pro_nf(monitor_every=10):
         return samples
 
 
-    num_samples = 2
-    sample(optimizer.target, rng, num_samples, 0, dir_name, gt_image[:num_samples])
+    num_samples = 2   
+    # import ipdb;ipdb.set_trace()
+    # sample(optimizer.target, rng, num_samples, 0, dir_name, gt_image[:num_samples])
     print('test sample done')
     for e in range(epoch):
 
@@ -362,21 +365,9 @@ def train_pro_nf(monitor_every=10):
             validation_loss.append(loss_val)
     
         num_samples = 16
-        sample(optimizer.target, rng, num_samples, e, dir_name, gt_image[:num_samples])
-        # checkpoints.save_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer, e, keep=3)
+        # sample(optimizer.target, rng, num_samples, e, dir_name, gt_image[:num_samples])
+        checkpoints.save_checkpoint("./unit_test/US1.48/checkpoints/" + dir_name, optimizer, e, keep=3)
         print('epoch %s/%s:' % (e+1, epoch), 'loss = %.3f' % jnp.mean(jnp.array(train_loss)), 'val_loss = %0.3f' % jnp.mean(jnp.array(validation_loss)))
 
 if __name__ == "__main__":
   train_pro_nf()
-
-
-
-## 2. list ke khodam neveshtam
-
-## 1.  add variationaldg
-## 2. ConditionalCoupling dorost konam baraye split_flow_transforms
-#### 2.1 ConditionalCoupling dorost konam baraye flow asli
-## 3. az Affine Injector behtar estefade konam
-## 4. be split_flow_transforms actnorm ezafe konam
-## 5. be split_flow_transforms conv1x1 ezafe konam
-## 6. use an encoder rather than the ground truth image itself gor affine injector

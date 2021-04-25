@@ -7,7 +7,7 @@ from survae.data.loaders import MNIST, CIFAR10, disp_imdata, logistic
 from survae.data.loaders import CIFAR10SURVAE
 from torchvision.transforms import RandomHorizontalFlip, Pad, RandomAffine, CenterCrop
 import math
-from survae.flows import Flow, PoolFlowExperiment
+from survae.flows import Flow, PoolFlowExperiment, DequantizationFlow
 from survae.nn.nets import DenseBlock, LambdaLayer, ElementwiseParams2d, DenseNet
 from typing import Any, Optional, List, Union, Tuple
 from survae.transforms import ConditionalTransform, ConditionalCoupling, Coupling, UniformDequantization, SimpleMaxPoolSurjection2d, Slice, Transform, Conv1x1, Squeeze2d, Unsqueeze2d, Sigmoid, VariationalDequantization, ScalarAffineBijection
@@ -120,95 +120,6 @@ def get_data(args):
     )
 
     return train_loader, eval_loader, data_shape
-
-class DequantizationFlow(Flow):
-    sample_shape:Tuple[int] = None
-    base_dist: Distribution = None
-    transforms: Union[List[Transform],None] = None
-    latent_size: Union[Tuple[int],None] = None
-    context_init: nn.Module = None
-
-    def __call__(self, x):
-        return self.log_prob(x)
-
-    @staticmethod
-    def _setup(data_shape, num_bits, num_steps, num_context,
-                 num_blocks, mid_channels, depth, growth, dropout, gated_conv):
-
-        context_net = []
-        context_net.append(LambdaLayer._setup(lambda x: 2*x.astype(jnp.float32)/(2**num_bits-1)-1))
-        context_net.append(DenseBlock._setup(in_channels=data_shape[0],
-                                               out_channels=mid_channels,
-                                               depth=4,
-                                               growth=16,
-                                               dropout=dropout,
-                                               gated_conv=gated_conv,
-                                               zero_init=False))
-        context_net.append(partial(nn.Conv, mid_channels, kernel_size=(2, 2), strides=(2, 2), padding='valid'))
-        context_net.append(DenseBlock._setup(in_channels=mid_channels,
-                                               out_channels=num_context,
-                                               depth=4,
-                                               growth=16,
-                                               dropout=dropout,
-                                               gated_conv=gated_conv,
-                                               zero_init=False))
-
-        transforms = []
-        sample_shape = (data_shape[0] * 4, data_shape[1] // 2, data_shape[2] // 2)
-        for i in range(num_steps):
-            transforms.extend([
-                Conv1x1._setup(sample_shape[0]),
-                ConditionalCoupling._setup(in_channels=sample_shape[0],
-                                    num_context=num_context,
-                                    num_blocks=num_blocks,
-                                    mid_channels=mid_channels,
-                                    depth=depth,
-                                    growth=growth,
-                                    dropout=dropout,
-                                    gated_conv=gated_conv)
-            ])
-
-        # Final shuffle of channels, squeeze and sigmoid
-        transforms.extend([Conv1x1._setup(sample_shape[0]),
-                           Unsqueeze2d._setup(),
-                           Sigmoid._setup(0.0, 1)
-                          ])
-        
-        return partial(DequantizationFlow, sample_shape=sample_shape, base_dist=DiagonalNormal, transforms=transforms, latent_size=None, context_init=context_net)
-
-    def setup(self):
-        if self.base_dist == None:
-            raise TypeError()
-        if type(self.transforms) == list:
-            self._transforms = [transform() for transform in self.transforms]
-        else:
-            self._transforms = []
-
-        self._context_init = [context() for context in self.context_init]
-
-        self.loc_dequantization = self.param('loc_dequantization', jax.nn.initializers.zeros, self.sample_shape[0])
-        self.log_scale_dequantization = self.param('log_scale_dequantization', jax.nn.initializers.zeros, self.sample_shape[0])
-
-    def sample_with_log_prob(self, context, rng):
-        params = {
-            "loc": self.loc_dequantization,
-            "log_scale": self.log_scale_dequantization,
-        }
-
-        if self._context_init:
-            for context_layer in self._context_init:
-                if 'strides' in context_layer.__dict__.keys():
-                    context = jnp.transpose(context_layer(jnp.transpose(context, (0, 2, 3, 1))), (0, 3, 1, 2))
-                else:
-                    context = context_layer(context)
-        z, log_prob = self.base_dist.sample_with_log_prob(rng, context.shape[0], params, self.sample_shape)
-        for transform in self._transforms:
-            if isinstance(transform, ConditionalTransform):
-                z, ldj = transform(z, context)
-            else:
-                z, ldj = transform(z, rng)
-            log_prob -= ldj
-        return z, log_prob
 
 def get_model(data_shape, num_bits, num_scales, num_steps, actnorm, pooling,
                  dequant, dequant_steps, dequant_context,
