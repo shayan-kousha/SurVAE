@@ -2,18 +2,25 @@
 
 ## Dependencies
 python3 </br>
-`pip install -r requirements.txt`
+```python
+pip install -r requirements.txt
+```
 
 ### JAX
-`pip install jax==0.2.8` </br>
-`pip install jaxlib==0.1.56+cuda100 -f https://storage.googleapis.com/jax-releases/jax_releases.html`
+```python
+pip install jax==0.2.8
+pip install jaxlib==0.1.56+cuda100 -f https://storage.googleapis.com/jax-releases/jax_releases.html
+```
 
-### Running Unit Test
-`python unit_test/US1.02/test_vae_training.py `
 
-## Run Experiments
+### Running Unit Tests
+```python
+python unit_test/US1.02/test_vae_training.py
+```
 
-## Toy Datasets
+## Experiments Commands
+
+## Toy Datasets(AbsFlow and AbsUnif Experiments)
 
 Command for `checkerboard`:
 ```python
@@ -47,6 +54,8 @@ python experiments/max_pooling/max_pooling_experiment.py --epochs 500 --batch_si
 ### Stretch Goal First approach
 
 ### Stretch Goal Second approach
-`python experiments/pro_nf_2/pro_nf.py --batch_size 32 --augmentation eta --dataset cifar10 --image_size 32`</br>
-`python experiments/pro_nf_2/pro_nf.py --batch_size 32 --augmentation eta --dataset cifar10 --image_size 16 --smallest`</br>
-`python experiments/pro_nf_2/pro_nf.py --batch_size 32 --augmentation eta --dataset cifar10 --image_size 32 16 --resume`</br>
+```python
+python experiments/pro_nf_2/pro_nf.py --batch_size 32 --augmentation eta --dataset cifar10 --image_size 32
+python experiments/pro_nf_2/pro_nf.py --batch_size 32 --augmentation eta --dataset cifar10 --image_size 16 --smallest
+python experiments/pro_nf_2/pro_nf.py --batch_size 32 --augmentation eta --dataset cifar10 --image_size 32 16 --resume
+```
