@@ -35,6 +35,7 @@ class ConditionalLayer(nn.Module):
         cond = self._cond_net(cond)
         ldj = jnp.zeros(x.shape[0])
         for i,transform in enumerate(self._transforms):
+            # print("Cond",i, transform.__class__.__name__, x.shape)
             x, _ldj = transform(x=x, cond=cond, *args, **kwargs)
             ldj += _ldj
         return x, ldj

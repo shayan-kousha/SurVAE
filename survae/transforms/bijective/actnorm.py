@@ -45,7 +45,6 @@ class ActNorm(nn.Module, Bijective):
     def forward(self,  x, *args, **kwargs):
         if self.params['mean'] == None:
             self.params['mean'], self.params['log_std'] = self.data_initializer(x)
-            
         z = (x - self.params['mean']) * jnp.exp(-self.params['log_std'])
         return z, self._logdet(x)
 
