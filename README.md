@@ -13,11 +13,6 @@ pip install jaxlib==0.1.56+cuda100 -f https://storage.googleapis.com/jax-release
 ```
 
 
-### Running Unit Tests
-```python
-python unit_test/US1.02/test_vae_training.py
-```
-
 ## Experiments Commands
 
 ## Toy Datasets(AbsFlow and AbsUnif Experiments)
@@ -49,9 +44,24 @@ Command for `pool = max`
 python experiments/max_pooling/max_pooling_experiment.py --epochs 500 --batch_size 32 --optimizer adamax --lr 1e-4 --gamma 0.995 --eval_every 1 --check_every 10 --warmup 5000 --num_steps 12 --num_scales 2 --dequant flow --pooling max --dataset cifar10 --augmentation eta --name maxpool --model_dir ./experiments/max_pooling/checkpoints/
 ```
 
-### Vincent's Experiment
+### MSAR-SCF Experiment
+```python
+python experiments/msar_scf/train_msar_scf.py --ckptdir "experiments/msar_scf/ckpt_sigmoid" --activation "sigmoid" --resume True --num_epochs 3000
+```
 
 ### Stretch Goal First approach
+```python
+## 16x16 => 32x32
+python experiments/pro_nf/train_pronf.py --ckptdir "experiments/pro_nf/ckpt_32" --resume True --warmup 50000  --ms
+## 8x8 => 16x16
+python experiments/pro_nf/train_pronf.py --ckptdir "experiments/pro_nf/ckpt_16" --resume True --warmup 50000 --input_res 16 --num_layers 2 --ms --learning_rate 1e-4 
+## 4x4 => 8x8
+python experiments/pro_nf/train_pronf.py --ckptdir "experiments/pro_nf/ckpt_8" --resume True --warmup 50000 --input_res 8 --num_layers 2 --ms --learning_rate 1e-4
+## 4x4 unconditional
+python experiments/pro_nf/train_pronf.py --ckptdir "experiments/pro_nf/ckpt_4" --resume True --warmup 50000 --input_res 4 
+## chain-up
+python experiments/pro_nf/merge.py --ckptdir "experiments/pro_nf" --resume True
+```
 
 ### Stretch Goal Second approach
 ```python
