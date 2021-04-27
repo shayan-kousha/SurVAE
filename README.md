@@ -15,7 +15,7 @@ pip install jaxlib==0.1.56+cuda100 -f https://storage.googleapis.com/jax-release
 
 ## Experiments Commands
 
-## Toy Datasets(AbsFlow and AbsUnif Experiments)
+### Toy Datasets(AbsFlow Experiment)
 
 Command for `checkerboard`:
 ```python
