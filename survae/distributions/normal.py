@@ -22,11 +22,11 @@ class StandardNormal(nn.Module, Distribution):
 
 class StandardNormal2d(nn.Module, Distribution):
     @classmethod
-    def log_prob(cls, x, params):
+    def log_prob(cls, x, params, *args, **kwargs):
         return sum_except_batch(norm.logpdf(x))
 
     @classmethod
-    def sample(cls, rng, num_samples, params):
+    def sample(cls, rng, num_samples, params, *args, **kwargs):
         shape = params.shape
         return random.normal(rng, (num_samples,)+(shape))
 
