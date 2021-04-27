@@ -125,7 +125,7 @@ class Transform(nn.Module):
 
 
 
-activation = lambda x: jnp.exp(jnp.tanh(x))
+activation = lambda x: jax.nn.sigmoid(x+2.0)
 
 
 
@@ -168,8 +168,8 @@ def cond_flow(C, H, W, num_flow_steps=32, hidden=256,layer=3):
     
 
 
-def flow(C=3, H=32, W=32, num_flow_steps=FLAGS.num_flow_steps, hidden=256,layer=2):
-    bijections = [survae.UniformDequantization._setup(),survae.Logit]
+def flow(C=3, H=32, W=32, num_flow_steps=FLAGS.num_flow_steps, hidden=256,layer=2,ms=True):
+    bijections = [survae.UniformDequantization._setup(),survae.Shift._setup(-0.5)]
 
     bijections += [survae.Squeeze2d._setup(2)]
     C *= 2**2
@@ -177,7 +177,7 @@ def flow(C=3, H=32, W=32, num_flow_steps=FLAGS.num_flow_steps, hidden=256,layer=
     W //= 2
     for j in range(num_flow_steps):
         _reverse_mask = j % 2 !=0
-        if FLAGS.ms:
+        if ms:
             mask_size=3
             _out = C-3
             if _reverse_mask:
@@ -191,7 +191,7 @@ def flow(C=3, H=32, W=32, num_flow_steps=FLAGS.num_flow_steps, hidden=256,layer=
                             _reverse_mask=j % 2 != 0, 
                             activation = activation,
                             mask_size=mask_size)]
-    if FLAGS.ms:
+    if ms:
         bijections += [survae.Split._setup(cond_flow(C=C-3,H=H,W=W, num_flow_steps=num_flow_steps, hidden=hidden,layer=layer), 3, dim=1)]
 
         _base_dist = survae.Normal
@@ -201,12 +201,16 @@ def flow(C=3, H=32, W=32, num_flow_steps=FLAGS.num_flow_steps, hidden=256,layer=
         flow = survae.Flow._setup(base_dist=_base_dist,transforms=bijections,latent_size=(C,H,W))
     return flow()
 
-model = flow(C=3, H=FLAGS.input_res, W=FLAGS.input_res, layer=FLAGS.num_layers)
+
+
+model = flow(C=3, H=FLAGS.input_res, W=FLAGS.input_res, layer=FLAGS.num_layers, ms=FLAGS.ms)
 
 @jax.jit
 def loss(params, batch_x, batch_y, rng):
-    batch_y, _ = survae.Logit().forward((batch_y + random.uniform(rng,batch_y.shape))/256)
+    batch_y = (batch_y + random.uniform(rng,batch_y.shape))/256 - 0.5
     batch_y = jnp.concatenate((batch_y,jnp.ones(batch_y.shape) * (-2.0)), axis=1)
+    # batch_y, _ = survae.Logit().forward((batch_y + random.uniform(rng,batch_y.shape))/256)
+    # batch_y = jnp.concatenate((batch_y,jnp.ones(batch_y.shape) * (-2.0)), axis=1)
     return model.apply( params, x=batch_x, rng=rng, params=batch_y)
 
 
@@ -225,7 +229,9 @@ def train_step(optimizer, batch_x, batch_y, lr, rng):
 def sampling(params,rng, batch_x, batch_y,num_samples=4):
     base_images_high = jnp.transpose(batch_x[:num_samples],(0,2,3,1))
     base_images_low = jnp.transpose(batch_y[:num_samples],(0,2,3,1))
-    batch_y, _ = survae.Logit().forward((batch_y + random.uniform(rng,batch_y.shape))/256)
+    # batch_y, _ = survae.Logit().forward((batch_y + random.uniform(rng,batch_y.shape))/256)
+    # batch_y = jnp.concatenate((batch_y,jnp.ones(batch_y.shape) * (-2.0)), axis=1)
+    batch_y = (batch_y + random.uniform(rng,batch_y.shape))/256 - 0.5
     batch_y = jnp.concatenate((batch_y,jnp.ones(batch_y.shape) * (-2.0)), axis=1)
     generate_images = model.apply(params, rng=rng, num_samples=num_samples, params=batch_y[:num_samples], method=model.sample)
     generate_images = jnp.transpose(generate_images,(0,2,3,1))
@@ -329,7 +335,7 @@ def main():
 
         test_loss, samples, _, _ = eval(optimizer.target, test_loader, eval_rng, sample=True)       
 
-        # assert (jnp.isfinite(test_loss)).all() == True
+        assert (jnp.isfinite(test_loss)).all() == True
         print('test epoch: {}, loss: {:.4f}'.format(
             epoch, test_loss
         ))            
