@@ -2,6 +2,9 @@
 
 This project is a reproduction of the major results from two papers, [SurVAE Flows: Surjections to Bridge the Gap between VAEs and Flows](https://arxiv.org/abs/2007.02731), and  [Normalizing Flows with Multi-Scale Autoregressive Priors](https://arxiv.org/abs/2004.03891) as well as a stretch goal of implementing the idea of ProNF. The reproduction is made in JAX library. You can find the original codes for the first paper [in this repository](https://github.com/didriknielsen/survae_flows) and the second paper [in this repository](https://github.com/visinf/mar-scf). Both codes were implemented in PyTorch, and our repository contains a JAX implementation of them.
 
+## Oral Presentation
+The below video is an oral presentation that illustrates and gives an overview of the scope of the project and the results.
+
 https://user-images.githubusercontent.com/18350547/116440584-abd0b880-a81e-11eb-89e7-70ded457201e.mp4
 
 
