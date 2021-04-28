@@ -1,6 +1,6 @@
 # EECS6322-project
 
-This project is aimed to reproduce the major results from two papers, [SurVAE Flows: Surjections to Bridge the Gap between VAEs and Flows](https://arxiv.org/abs/2007.02731), and  `Normalizing Flows with Multi-Scale Autoregressive Priors (Mahajan et al., 2020)` as well as a stretch goal of implementing the idea of ProNF. The reproduction is made in JAX library.
+This project is aimed to reproduce the major results from two papers, [SurVAE Flows: Surjections to Bridge the Gap between VAEs and Flows](https://arxiv.org/abs/2007.02731), and  [Normalizing Flows with Multi-Scale Autoregressive Priors](https://arxiv.org/abs/2004.03891) as well as a stretch goal of implementing the idea of ProNF. The reproduction is made in JAX library.
 
 ## Dependencies
 ### python3
